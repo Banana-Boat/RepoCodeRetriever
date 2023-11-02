@@ -8,6 +8,7 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 public class JMethod {
+    private  String name;
     private String signature;
     private String body;
     private List<JCodeSnippet> codeSnippets;
