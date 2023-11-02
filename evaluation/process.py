@@ -61,6 +61,7 @@ def filter_data(raw_dir_path, output_file_path):
     res = []
     filtered_repo_data = []  # list contains filtered data in one repo
     cur_repo = ''
+    cur_repo_path_set = set()  # use to ignore same path data in one repo
     repo_set = set()  # use to calculate repo count, there has discontinuous data in one repo
     raw_data_count = 0
 
@@ -75,15 +76,20 @@ def filter_data(raw_dir_path, output_file_path):
 
                 if obj['repo'] + obj['sha'] != cur_repo:
                     # limitation for data count in one repo
-                    if len(filtered_repo_data) >= 20:
+                    if len(filtered_repo_data) >= 18:
                         res.extend(filtered_repo_data)
                         repo_set.add(cur_repo)
 
                     filtered_repo_data = []
                     cur_repo = obj['repo'] + obj['sha']
+                    cur_repo_path_set.clear()
+
+                # limitation for same path in one repo
+                if obj['path'] in cur_repo_path_set:
+                    continue
 
                 # limitation for directory hierarchy in path field
-                if obj['path'].count('/') < 3 or obj['path'].count('/') > 10:
+                if obj['path'].count('/') < 3 or obj['path'].count('/') > 8:
                     continue
 
                 # limitation for query's token count in docstring_tokens field
@@ -116,7 +122,7 @@ def filter_data(raw_dir_path, output_file_path):
                 query = query.strip()
 
                 # ignore query which is too short or too long
-                if len(query) < 30 or len(query) > 100:
+                if len(query) < 50 or len(query) > 100:
                     continue
 
                 # ignore duplicate query in one repo
@@ -138,6 +144,8 @@ def filter_data(raw_dir_path, output_file_path):
                     'url': obj['url'],
                 })
 
+                cur_repo_path_set.add(obj['path'])
+
     print('Filtered data count: {}\nRatio: {}\nRepo count: {}'.format(
         len(res), len(res) / raw_data_count, len(repo_set)))
 
@@ -155,8 +163,8 @@ if __name__ == "__main__":
     data_file_path = os.path.join(filtered_dir_path, 'data.jsonl')
     repo_file_path = os.path.join(filtered_dir_path, 'repos.json')
 
-    # filter_data(raw_dir_path, data_file_path)
+    filter_data(raw_dir_path, data_file_path)
 
-    get_repos(data_file_path, repo_file_path)
+    # get_repos(data_file_path, repo_file_path)
 
     # download_repos(repo_file_path, repo_dir_path, 0)

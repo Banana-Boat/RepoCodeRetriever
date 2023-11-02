@@ -2,6 +2,13 @@ evaluation/filtered
 evaluation/repo
 evaluation/raw
 
+java-repo-parser/target/
+java-repo-parser/repo/
+java-repo-parser/*.json
+
+repo/
+
+result/
 ################################################
 .vscode
 .idea
