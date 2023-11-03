@@ -19,11 +19,13 @@ public class JavaRepoParser {
     private static final String BLOCK_PLACEHOLDER = "<BLOCK>";
     private Tokenizer tokenizer;
     private ParserConfiguration.LanguageLevel languageLevel;
-    private Integer nodeCount = 0; // 总节点数
-    private Integer errorFileCount = 0; // 解析错误的文件数
-    private Integer cutCount = 0; // 截断的代码片段数
-    private Integer totalCutCharCount = 0; // 总截断的字符数
-    public List<String> logs = new ArrayList<>(); // 截断日志
+    private int nodeCount = 0; // number of nodes
+    private int dirCount = 0; // number of directories
+    private int fileCount = 0; // number of files
+    private int errorFileCount = 0; // number of parsing error file
+    private int cutCount = 0; // number of cut code snippets
+    private int totalCutCharCount = 0; // use to calculate average number of cut tokens
+    public List<String> logs = new ArrayList<>(); // parse logs
 
     public JavaRepoParser(Tokenizer tokenizer, ParserConfiguration.LanguageLevel languageLevel) {
         this.tokenizer = tokenizer;
@@ -36,8 +38,9 @@ public class JavaRepoParser {
 
         JDirectory jDirectory = extractDirectory(dir, dir.getName());
 
-        logs.add(0,
-                "Number of error files：" + errorFileCount +
+        logs.add(0, "Number of directories：" + dirCount +
+                        "\nNumber of files：" + fileCount +
+                        "\nNumber of parsing error files：" + errorFileCount +
                         "\nNumber of cut code snippets：" + cutCount +
                         "\nNumber of node：" + nodeCount +
                         "\nAverage number of cut tokens：" + (cutCount != 0 ? (double) totalCutCharCount / cutCount : "/"));
@@ -48,9 +51,6 @@ public class JavaRepoParser {
         );
     }
 
-    /**
-     * 提取一个目录中的所有子包 / 类 / 接口 / 枚举
-     */
     public JDirectory extractDirectory(File dir, String pkgName) throws Exception {
         if (!dir.isDirectory())
             throw new IllegalArgumentException("param is not a directory");
@@ -59,7 +59,7 @@ public class JavaRepoParser {
         ArrayList<JFile> jFiles = new ArrayList<>();
 
         File[] subFiles = Objects.requireNonNull(dir.listFiles());
-//        // 处理当前目录下只有一个子目录的情况：合并目录名，只产生一个节点
+//        // process current directory with only one subdirectory, concat directory name, only generate one node.
 //        if (subFiles.length == 1 && subFiles[0].isDirectory()) {
 //            return extractDirectory(subFiles[0], pkgName + "/" + subFiles[0].getName());
 //        }
@@ -76,11 +76,12 @@ public class JavaRepoParser {
             }
         }
 
-        // 若当前目录下没有子目录且没有java文件，则返回null
+        // if current directory has no subdirectory and no java file, return null
         if(jFiles.size() == 0 && subJDirectories.size() == 0)
             return null;
 
         nodeCount++;
+        dirCount++;
         return new JDirectory(
                 pkgName,
                 dir.getPath(),
@@ -89,9 +90,6 @@ public class JavaRepoParser {
         );
     }
 
-    /**
-     * 提取一个文件中的所有类 / 接口 / 枚举
-     */
     public JFile extractFile(File file) {
         ArrayList<JClass> jClasses = new ArrayList<>();
 
@@ -101,14 +99,15 @@ public class JavaRepoParser {
             );
             CompilationUnit cu = StaticJavaParser.parse(file);
 
-            // 获取当前文件中的所有类 / 接口 / 枚举，若存在嵌套内部类则直接拍平
+            // get current file's all classes / interfaces / enums
+            // if there are nested inner classes, flatten them directly
             cu.accept(new VoidVisitorAdapter<Void>() {
                 @Override
                 public void visit(CompilationUnit cu, Void arg) {
                     super.visit(cu, arg);
 
                     for (ClassOrInterfaceDeclaration coi : cu.findAll(ClassOrInterfaceDeclaration.class)) {
-                        // 拼接签名
+                        // concat signature
                         String signature = (coi.isAbstract() ? "abstract " : "") +
                                 (coi.isInterface() ? "interface " : "class ") + coi.getNameAsString() +
                                 ((coi.getExtendedTypes().size() == 0) ? "" :
@@ -127,7 +126,7 @@ public class JavaRepoParser {
                     }
 
                     for (EnumDeclaration e : cu.findAll(EnumDeclaration.class)) {
-                        // 拼接签名
+                        // concat signature
                         String signature = "enum " + e.getNameAsString() +
                                 ((e.getImplementedTypes().size() == 0) ? "" :
                                         " implements " + e.getImplementedTypes().toString()
@@ -147,16 +146,13 @@ public class JavaRepoParser {
             errorFileCount++;
         }
 
-
+        fileCount++;
         return new JFile(
                 jClasses,
                 file.getPath()
         );
     }
 
-    /**
-     * 提取一个类 / 接口 / 枚举中的所有方法
-     */
     public List<JMethod> extractMethods(TypeDeclaration td, String filePath) {
         ArrayList<JMethod> jMethods = new ArrayList<>();
 
@@ -165,7 +161,7 @@ public class JavaRepoParser {
         for (Object obj : td.getMethods()) {
             MethodDeclaration md = (MethodDeclaration) obj;
 
-            // 忽略空方法 / 构造器 / toString / hashCode / equals 方法
+            // ignore empty func / constructor / toString / hashCode / equals
             if (md.getBody().isEmpty() ||
                     md.isConstructorDeclaration() ||
                     md.getNameAsString().equals("toString") ||
@@ -174,7 +170,7 @@ public class JavaRepoParser {
                 continue;
             }
 
-            // 忽略getter / setter方法
+            // ignore getter / setter
             List<String> getterAndSetterMethods = new ArrayList<>();
             fields.forEach(field -> {
                 String fieldName = field.getVariable(0).getNameAsString();
@@ -192,10 +188,9 @@ public class JavaRepoParser {
             JCodeSnippet jCodeSnippet;
             BlockStmt body = md.getBody().get();
             if (!tokenizer.isLegalSource(signature + body)) {
-                // 继续分裂用jCodeSnippet替代method节点，jCodeSnippet中nodeCount已经加过
                 jCodeSnippet = splitCodeSnippet(body, formatCodeSnippet(body.toString()), filePath);
             } else {
-                nodeCount++; // 直接算作一个method节点
+                nodeCount++;
                 jCodeSnippet = new JCodeSnippet(formatCodeSnippet(body.toString()), new ArrayList<>());
             }
 
@@ -229,7 +224,7 @@ public class JavaRepoParser {
                         Statement thenStmt = stmt.asIfStmt().getThenStmt();
                         String ifBlockContent = "if (" + stmt.asIfStmt().getCondition() + ") " + formatCodeSnippet(thenStmt.toString());
 
-                        if (stmt.asIfStmt().getElseStmt().isPresent()) { // 若有else-if / else则递归处理
+                        if (stmt.asIfStmt().getElseStmt().isPresent()) { // if there has else-if / else, process recursively
                             Statement elseStmt = stmt.asIfStmt().getElseStmt().get();
                             String elseBlockContent = "else " + formatCodeSnippet(elseStmt.toString());
 
@@ -246,7 +241,7 @@ public class JavaRepoParser {
                                 jCodeSnippets.add(splitCodeSnippet(thenStmt, tempContent, filePath));
                                 content = replaceOnce(content, tempContent, BLOCK_PLACEHOLDER);
                             }
-                        } else { // 若无else-if / else
+                        } else { // if there has no else-if / else
                             jCodeSnippets.add(splitCodeSnippet(thenStmt, ifBlockContent, filePath));
                             content = replaceOnce(content, ifBlockContent, BLOCK_PLACEHOLDER);
                         }
@@ -255,7 +250,6 @@ public class JavaRepoParser {
                         for (SwitchEntry entry : stmt.asSwitchStmt().getEntries()) {
                             for (Statement statement : entry.getStatements()) {
                                 String statementContent = formatCodeSnippet(statement.toString());
-                                // 若当前statement超过上限，则分割
                                 if (!tokenizer.isLegalCodeSnippet(statementContent)) {
                                     jCodeSnippets.add(splitCodeSnippet(statement, statementContent, filePath));
                                     content = replaceOnce(content, statementContent, BLOCK_PLACEHOLDER);
@@ -266,7 +260,7 @@ public class JavaRepoParser {
                     case "TryStmt":
                         jCodeSnippets.add(splitCodeSnippet(stmt.asTryStmt().getTryBlock(), codeSnippet, filePath));
                         content = replaceOnce(content, codeSnippet, BLOCK_PLACEHOLDER);
-                        // 不对catch和finally进行分割，若超过则直接截断
+                        // don't split catch and finally, cut directly if exceed
                         break;
                     case "ForStmt":
                         jCodeSnippets.add(splitCodeSnippet(stmt.asForStmt().getBody(), codeSnippet, filePath));
@@ -297,14 +291,13 @@ public class JavaRepoParser {
             }
         }
 
-        // 若分割完后仍然超过 MAX_LLM_LENGTH，则截断
+        // if still exceed after splitting, cut directly
         if (!tokenizer.isLegalSource(content)) {
             totalCutCharCount += tokenizer.getTokenNum(content) - tokenizer.getMaxSourceLength();
             cutCount++;
 
             String cutContent = tokenizer.cutToLegalSource(content);
 
-            // 记录日志信息
             logs.add(filePath + "\n" + body.getRange().get() + "\n" +
                     "cut off from: \n" + content + "\n" +
                     "to: \n" + cutContent);
@@ -316,7 +309,7 @@ public class JavaRepoParser {
         return new JCodeSnippet(content, jCodeSnippets);
     }
 
-    // 替换第一个匹配的字符串。String自带的方法第一个参数为正则表达式，而待替换的代码片段存在存在正则中的特殊字符，故自己实现
+    // 替换第一个匹配的字符串。String自带的方法第一个参数为正则表达式，而待替换的代码片段存在存在正则中的特殊字符，故自行实现
     public String replaceOnce(String str, String target, String replacement) {
         int idx = str.indexOf(target);
         if (idx == -1) {
