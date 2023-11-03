@@ -38,8 +38,8 @@ public class JavaRepoParser {
 
         JDirectory jDirectory = extractDirectory(dir, dir.getName());
 
-        logs.add(0, "Number of directories：" + dirCount +
-                        "\nNumber of files：" + fileCount +
+        logs.add(0, "Number of directories containing java file：" + dirCount +
+                        "\nNumber of java files：" + fileCount +
                         "\nNumber of parsing error files：" + errorFileCount +
                         "\nNumber of cut code snippets：" + cutCount +
                         "\nNumber of node：" + nodeCount +
@@ -148,6 +148,7 @@ public class JavaRepoParser {
 
         fileCount++;
         return new JFile(
+                file.getName(),
                 jClasses,
                 file.getPath()
         );
