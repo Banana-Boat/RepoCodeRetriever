@@ -1,10 +1,9 @@
 import logging
 from typing import Tuple
-import torch
 from enum import Enum
 from tqdm import tqdm
 from transformers import (AutoTokenizer, T5Config,
-                          T5ForConditionalGeneration, PegasusForConditionalGeneration)
+                          T5ForConditionalGeneration, PegasusXForConditionalGeneration)
 
 
 class MODEL_TAG(Enum):
@@ -25,7 +24,7 @@ class Summarizer:
             "max_target_length": 30,  # TODO: choose a proper value
         },
         MODEL_TAG.TEXT: {
-            "name": "google/pegasus-large",
+            "name": "google/pegasus-x-large",
             "max_source_length": 1024,
             "max_target_length": 100,  # TODO: choose a proper value
         },
@@ -42,9 +41,10 @@ class Summarizer:
                     val["name"], config=model_config)
                 tokenizer = AutoTokenizer.from_pretrained(val["name"])
             elif tag == MODEL_TAG.TEXT:
-                model = PegasusForConditionalGeneration.from_pretrained(
+                model = PegasusXForConditionalGeneration.from_pretrained(
                     val["name"])
-                tokenizer = AutoTokenizer.from_pretrained(val["name"])
+                tokenizer = AutoTokenizer.from_pretrained(
+                    val["name"])
 
             model.eval()
             self.model_dict[tag]["model"] = model
