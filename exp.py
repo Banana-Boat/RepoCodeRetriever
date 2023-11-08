@@ -1,15 +1,15 @@
-from transformers import AutoModelForSeq2SeqLM, AutoTokenizer
+from transformers import T5ForConditionalGeneration, AutoTokenizer
 
 if __name__ == '__main__':
 
     model_obj = {
-        "name": "Salesforce/codet5p-2b",
-        "max_source_length": 2048,
+        "name": "Salesforce/codet5p-770m",
+        "max_source_length": 512,
         "max_target_length": 50,
     }
 
-    model = AutoModelForSeq2SeqLM.from_pretrained(
-        model_obj['name'], trust_remote_code=True)
+    model = T5ForConditionalGeneration.from_pretrained(
+        model_obj['name'])
     tokenizer = AutoTokenizer.from_pretrained(
         model_obj['name'])
 
@@ -22,7 +22,6 @@ if __name__ == '__main__':
     }
     '''
 
-    encoded_prompt = tokenizer("// Summarization: ", return_tensors='pt')
     encoded_code = tokenizer(source, return_tensors='pt',
                              max_length=model_obj['max_source_length'],
                              padding=True, verbose=False,
@@ -31,7 +30,6 @@ if __name__ == '__main__':
     generated_texts_ids = model.generate(
         input_ids=encoded_code['input_ids'],
         attention_mask=encoded_code['attention_mask'],
-        decoder_input_ids=encoded_prompt['input_ids'].clone(),
         max_length=model_obj['max_target_length']
     )
 

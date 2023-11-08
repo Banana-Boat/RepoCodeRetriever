@@ -1,5 +1,6 @@
 import json
 import random
+import re
 from tqdm import tqdm
 from transformers import AutoTokenizer
 
@@ -9,11 +10,24 @@ class MyTokenizer:
 
     def __init__(self):
         self.tokenizer = AutoTokenizer.from_pretrained(
-            "Salesforce/codet5-base-multi-sum")
+            "Salesforce/codet5p-770m")
 
     def isLegalSource(self, source):
         encoded = self.tokenizer.encode(source, add_special_tokens=True)
         return len(encoded) <= self.MAX_SOURCE_LEN
+
+
+def isContainSpecialStr(source):
+    if not source.isascii() or \
+        "TODO" in source or \
+        "/*" in source or \
+        "https://" in source or \
+        "http://" in source or \
+        re.search(r'<img[^>]*>', source) or \
+            re.search(r'<a[^>]*>', source):
+        return True
+
+    return False
 
 
 def get_processed_data(tokenizer: MyTokenizer, filename, start_idx):
@@ -25,14 +39,16 @@ def get_processed_data(tokenizer: MyTokenizer, filename, start_idx):
         for line in tqdm(f.readlines(), desc="Processing {}...".format(filename)):
             jsonl = json.loads(line)
 
-            obj = {}
+            # 限制class摘要最小长度
+            if len(jsonl['des']) < 40:
+                continue
 
             valid_num = 0  # 带摘要的方法数
 
             code = jsonl['signature'] + ' {\n'
             for method in jsonl['methods']:
                 tmp_str = '\t' + method['name'] + ';'
-                if method['des'] != '':
+                if method['des'] != '' and not isContainSpecialStr(method['des']):
                     tmp_str += ' // ' + method['des']
                     valid_num += 1
                 tmp_str += '\n'
@@ -45,6 +61,10 @@ def get_processed_data(tokenizer: MyTokenizer, filename, start_idx):
 
             code += '}'
 
+            # 忽略携带特殊字符的类
+            if isContainSpecialStr(code) or isContainSpecialStr(jsonl['des']):
+                continue
+
             # 若带摘要的方法数少于2，则忽略该类
             if valid_num < 2:
                 continue
@@ -53,12 +73,12 @@ def get_processed_data(tokenizer: MyTokenizer, filename, start_idx):
             if not tokenizer.isLegalSource(code):
                 continue
 
-            obj['index'] = index
-            obj['repo'] = jsonl['repo']
-            obj['code'] = code
-            obj['des'] = jsonl['des']
-
-            res.append(obj)
+            res.append({
+                'index': index,
+                'repo': jsonl['repo'],
+                'des': jsonl['des'],
+                'code': code,
+            })
             index += 1
 
     return res
@@ -85,12 +105,12 @@ if __name__ == '__main__':
 
     with open('../train_cls.jsonl', 'w', encoding='utf-8') as f:
         for item in res[:train_num]:
-            f.write(json.dumps(item, ensure_ascii=False) + '\n')
+            f.write(json.dumps(item) + '\n')
 
     with open('../valid_cls.jsonl', 'w', encoding='utf-8') as f:
         for item in res[train_num:train_num+valid_num]:
-            f.write(json.dumps(item, ensure_ascii=False) + '\n')
+            f.write(json.dumps(item) + '\n')
 
     with open('../test_cls.jsonl', 'w', encoding='utf-8') as f:
         for item in res[train_num+valid_num:]:
-            f.write(json.dumps(item, ensure_ascii=False) + '\n')
+            f.write(json.dumps(item) + '\n')
