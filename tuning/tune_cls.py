@@ -59,9 +59,9 @@ def read_arguments():
     # training
     parser.add_argument("--num_train_epochs", default=24, type=int,
                         help="Total number of training epochs to perform.")
-    parser.add_argument("--train_batch_size", default=36, type=int,
+    parser.add_argument("--train_batch_size", default=22, type=int,
                         help="Batch size per GPU/CPU for training.")
-    parser.add_argument("--eval_batch_size", default=18, type=int,
+    parser.add_argument("--eval_batch_size", default=11, type=int,
                         help="Batch size per GPU/CPU for evaluation.")
     parser.add_argument("--max_source_length", default=512, type=int,
                         help="The maximum total source sequence length after tokenization. Sequences longer "
@@ -384,7 +384,7 @@ def main(args):
             else:
                 early_stop_count += 1
                 if early_stop_count == early_stop_threshold:
-                    print("early stopping!!!")
+                    logger.warning("early stopping!!!")
                     break
 
     # use dev file and test file ( if exist) to calculate bleu
