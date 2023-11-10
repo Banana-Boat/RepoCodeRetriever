@@ -6,19 +6,9 @@ java-repo-parser/target/
 java-repo-parser/repo/
 java-repo-parser/*.json
 
-tuning/data/javadocs/
-
-tuning/data/class/**
-!tuning/data/class/*.py
-
-tuning/data/package/**
-!tuning/data/package/*.py
-
 repo/
 
 result/
-
-model/
 ################################################
 .vscode
 .idea
