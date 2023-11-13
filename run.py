@@ -1,14 +1,16 @@
 import json
 import logging
 import os
+from dotenv import load_dotenv
+from ie_client import IEClient
 
 from summarizer import Summarizer
 
 
-def parse_repo(repo_path, tokenizer_path, output_path, log_path) -> int:
+def parse_repo(repo_path, output_path, log_path) -> int:
     return os.system(
-        "java -jar ./java-repo-parser.jar -r={} -t={} -o={} -l={}".format(
-            repo_path, tokenizer_path, output_path, log_path)
+        "java -jar ./java-repo-parser.jar -r={} -o={} -l={}".format(
+            repo_path, output_path, log_path)
     )
 
 
@@ -29,12 +31,12 @@ def create_logger():
 
 
 if __name__ == "__main__":
+    load_dotenv()
     logger = create_logger()
 
     # handle paths
     repo_name = "pgjdbc"
     repo_path = "./repo/{}".format(repo_name)
-    tokenizer_path = "./tokenizer-codet5-large.json"
     parse_log_path = "./result/parse_log_{}.txt".format(repo_name)
     parse_output_path = "./result/parse_out_{}.json".format(repo_name)
     summarize_log_path = "./result/sum_log_{}.txt".format(repo_name)
@@ -44,23 +46,26 @@ if __name__ == "__main__":
         logger.error("Repo's path does not exist")
         exit(1)
 
-    if not os.path.exists(tokenizer_path):
-        logger.error("Tokenizer.json file does not exist")
-        exit(1)
-
     exam_dir_paths([
         parse_log_path, parse_output_path, summarize_log_path, summarize_output_path
     ])
 
     # parse entire repo using java-repo-parser tool
-    if (0 != parse_repo(repo_path, tokenizer_path, parse_output_path, parse_log_path)):
+    if (0 != parse_repo(repo_path, parse_output_path, parse_log_path)):
         logging.error("Failed to parse repo")
         exit(1)
     logger.info("Repo parsed successfully, log file was written to {}, result file was written to {} ".format(
         parse_log_path, parse_output_path))
 
     # build summary tree for entire repo
-    summarizer = Summarizer(logger)
+    token = os.getenv('IE_TOKEN')
+    url = os.getenv('IE_URL')
+    if token == None or url == None:
+        logging.error("Cannot get IE_TOKEN or IE_URL in .env file")
+        exit(1)
+    ie_client = IEClient(url, token)
+
+    summarizer = Summarizer(logger, ie_client)
     result = {}
     sum_logs = []
 

@@ -9,6 +9,8 @@ java-repo-parser/*.json
 repo/
 
 result/
+
+.env
 ################################################
 .vscode
 .idea

@@ -111,7 +111,8 @@ public class JavaRepoParser {
                         jClasses.add(new JClass(
                                 coi.getNameAsString(),
                                 signature,
-                                extractMethods(coi)
+                                extractMethods(coi),
+                                coi.isInterface() ? "interface" : "class"
                         ));
                     }
 
@@ -126,7 +127,8 @@ public class JavaRepoParser {
                         jClasses.add(new JClass(
                                 e.getNameAsString(),
                                 signature,
-                                extractMethods(e)
+                                extractMethods(e),
+                                "enum"
                         ));
                     }
                 }
