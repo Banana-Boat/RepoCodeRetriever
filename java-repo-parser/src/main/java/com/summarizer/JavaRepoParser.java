@@ -154,10 +154,8 @@ public class JavaRepoParser {
         for (Object obj : td.getMethods()) {
             MethodDeclaration md = (MethodDeclaration) obj;
 
-            // ignore empty func / constructor / toString / hashCode / equals
-            if (md.getBody().isEmpty() ||
-                    md.isConstructorDeclaration() ||
-                    md.getNameAsString().equals("toString") ||
+            // ignore toString / hashCode / equals
+            if (md.getNameAsString().equals("toString") ||
                     md.getNameAsString().equals("hashCode") ||
                     md.getNameAsString().equals("equals")) {
                 continue;
@@ -178,7 +176,8 @@ public class JavaRepoParser {
             String signature = md.getType() + " " + md.getName() +
                     md.getParameters().toString().replace("[", "(").replace("]", ")");
 
-            String bodyContent = formatCodeSnippet(md.getBody().get().toString());
+
+            String bodyContent = md.getBody().isEmpty() ? "" : formatCodeSnippet(md.getBody().get().toString());
 
             nodeCount++;
             jMethods.add(new JMethod(

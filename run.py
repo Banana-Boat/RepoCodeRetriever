@@ -60,10 +60,12 @@ if __name__ == "__main__":
     # build summary tree for entire repo
     token = os.getenv('IE_TOKEN')
     url = os.getenv('IE_URL')
-    if token == None or url == None:
-        logging.error("Cannot get IE_TOKEN or IE_URL in .env file")
+    max_input_length = os.getenv('IE_MODEL_INPUT_LENGTH')
+    model_name = os.getenv('IE_MODEL_NAME')
+    if token == None or url == None or model_name == None or max_input_length == None:
+        logging.error("Cannot get value in .env file")
         exit(1)
-    ie_client = IEClient(url, token)
+    ie_client = IEClient(url, token, model_name, int(max_input_length))
 
     summarizer = Summarizer(logger, ie_client)
     result = {}

@@ -1,5 +1,4 @@
 import logging
-import os
 from typing import Tuple
 from tqdm import tqdm
 from transformers import CodeLlamaTokenizer
@@ -8,7 +7,9 @@ from ie_client import IEClient
 
 
 NO_SUMMARY = "*** No enough context for summarization ***"
-SEPARATOR = "======================================================"
+ERROR_SUMMARY = "*** Error occurred during summarization ***"
+SEPARATOR = "######################################################"
+LOG_SEPARATOR = "======================================================"
 
 
 class Summarizer:
@@ -16,27 +17,28 @@ class Summarizer:
 
     def __init__(self, logger: logging.Logger, ie_client: IEClient):
         self.logger = logger
-
-        self.SPECIAL_TOKEN_NUM = 5
-        self.MAX_INPUT_TOKEN_NUM = 4096 - self.SPECIAL_TOKEN_NUM
-
-        self.tokenizer = CodeLlamaTokenizer.from_pretrained(
-            "codellama/CodeLlama-13b-Instruct-hf")
-
         self.ie_client = ie_client
 
-    def generate_summary(self, input_text: str) -> str:
+        self.SPECIAL_TOKEN_NUM = 5
+        self.MAX_INPUT_TOKEN_NUM = ie_client.max_input_length - self.SPECIAL_TOKEN_NUM
+
+        self.tokenizer = CodeLlamaTokenizer.from_pretrained(
+            ie_client.model_name)
+
+    def generate_summary(self, input_text: str, max_output_length=100) -> str:
         '''
             get summary through API calls.
         '''
-
-        return self.ie_client.generate(input_text)
+        try:
+            return self.ie_client.generate(input_text, max_output_length)
+        except Exception as e:
+            self.logger.error(e)
+            return ERROR_SUMMARY
 
     def isLegalInputText(self, input_text: str):
         '''
             check if the input text is legal, excluding special tokens
         '''
-
         encoded = self.tokenizer.encode(
             input_text, add_special_tokens=False, padding=False, truncation=False)
 
@@ -46,7 +48,6 @@ class Summarizer:
         '''
             add special tokens, truncate if exceeds the token limit
         '''
-
         input_text = f"{prompt}\n{SEPARATOR}\n{context}"
 
         if not self.isLegalInputText(input_text):
@@ -64,17 +65,20 @@ class Summarizer:
 
     def summarize_method(self, method_json) -> str:
         '''
-            generate summary for method.
+            generate summary for method according to func body.
         '''
-        PROMPT = "Summarize the method below in about 50 words"
+        PROMPT = "Summarize the method below in about 50 words."
 
-        context = method_json["signature"] + method_json["body"]
+        summary = NO_SUMMARY
+        input_text = ""
 
-        input_text = self.build_input(PROMPT, context)
-        summary = self.generate_summary(input_text)
+        if method_json["body"] != "":
+            context = method_json["signature"] + method_json["body"]
+            input_text = self.build_input(PROMPT, context)
+            summary = self.generate_summary(input_text)
 
         self.sum_logs.append(
-            f"METHOD{SEPARATOR}\n{summary}\n<=\n{input_text}"
+            f"METHOD{LOG_SEPARATOR}\n{summary}\n<=\n{input_text}"
         )
         self.pbar.update(1)
 
@@ -84,35 +88,33 @@ class Summarizer:
         '''
             generate summary for class/interface/enum according to its methods.
         '''
-        PROMPT = f"Summarize the Java {cls_json['type']} below in about 50 words"
+        PROMPT = f"Summarize the Java {cls_json['type']} below in about 50 words."
 
-        input_text = ""
-        summary = NO_SUMMARY
         ignore_log = ""
+        context = cls_json["signature"] + " {\n"
 
-        if len(cls_json["methods"]) > 0:
-            context = cls_json["signature"] + " {\n"
+        for idx, method_json in enumerate(cls_json["methods"]):
+            tmp_str = f"\t{method_json['signature']};\n"
 
-            for idx, method_json in enumerate(cls_json["methods"]):
-                method_sum = self.summarize_method(method_json)
+            method_sum = self.summarize_method(method_json)
+            if method_sum != ERROR_SUMMARY and method_sum != NO_SUMMARY:
                 tmp_str = f"\t{method_json['signature']}; // {method_sum}\n"
 
-                # ignore methods that exceed the token limit
-                if not self.isLegalInputText(f"{PROMPT}\n{SEPARATOR}\n{context + tmp_str}"):
-                    # the progress bar may be updated incorrectly due to the omission of some nodes
+            # ignore methods that exceed the token limit
+            if not self.isLegalInputText(f"{PROMPT}\n{SEPARATOR}\n{context + tmp_str}"):
+                # the progress bar may be updated incorrectly due to the omission of some nodes
+                ignore_log += f"Number of ignored method: {str(len(cls_json['methods']) - idx)}\n"
+                break
 
-                    ignore_log += f"Number of ignored method: {str(len(cls_json['methods']) - idx)}\n"
-                    break
+            context += tmp_str
 
-                context += tmp_str
+        context += "}"
 
-            context += "}"
-
-            input_text = self.build_input(PROMPT, context)
-            summary = self.generate_summary(input_text)
+        input_text = self.build_input(PROMPT, context)
+        summary = self.generate_summary(input_text)
 
         self.sum_logs.append(
-            f"CLASS{SEPARATOR}\n{summary}\n<=\n{input_text}\n{ignore_log}")
+            f"CLASS{LOG_SEPARATOR}\n{summary}\n<=\n{input_text}\n{ignore_log}")
         self.pbar.update(1)
 
         return summary
@@ -121,7 +123,7 @@ class Summarizer:
         '''
             generate summary for Java file according to its class / interface / enum.
         '''
-        PROMPT = "Summarize the Java file below in about 50 words"
+        PROMPT = "Summarize the Java file below in about 50 words."
 
         valid_context_num = 0  # number of valid context
         summary = NO_SUMMARY
@@ -134,15 +136,13 @@ class Summarizer:
 
             for idx, cls_json in enumerate(file_json["classes"]):
                 cls_sum = self.summarize_cls(cls_json)
-
-                if cls_sum == NO_SUMMARY:
+                if cls_sum == NO_SUMMARY or cls_sum == ERROR_SUMMARY:
                     continue
 
-                tmp_str = f"{valid_context_num + 1}. The summary of Java {cls_json['type']} named {cls_json['name']}: {cls_sum}\n"
+                tmp_str = f"\t- The summary of Java {cls_json['type']} named {cls_json['name']}: {cls_sum}\n"
 
                 if not self.isLegalInputText(f"{PROMPT}\n{SEPARATOR}\n{context + tmp_str}"):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
-
                     ignore_log += f"Number of ignored class: {str(len(file_json['classes']) - idx)}\n"
                     break
 
@@ -154,7 +154,7 @@ class Summarizer:
             summary = self.generate_summary(input_text)
 
         self.sum_logs.append(
-            f"FILE{SEPARATOR}\n{summary}\n<=\n{input_text}\n{ignore_log}")
+            f"FILE{LOG_SEPARATOR}\n{summary}\n<=\n{input_text}\n{ignore_log}")
         self.pbar.update(1)
 
         return {
@@ -166,7 +166,7 @@ class Summarizer:
         '''
             generate summary for directory according to its subdirectories and files.
         '''
-        PROMPT = "Summarize the directory below in about 50 words"
+        PROMPT = "Summarize the directory below in about 50 words, don't include examples."
 
         # if current directory only has one subdirectory(no file),
         # concat directory name, only generate one node.
@@ -191,14 +191,13 @@ class Summarizer:
             context += "The following is the subdirectory in the directory and the corresponding summary:\n"
 
             for idx, sub_dir_node in enumerate(sub_dir_nodes):
-                if sub_dir_node['summary'] == NO_SUMMARY:
+                if sub_dir_node['summary'] == NO_SUMMARY or sub_dir_node['summary'] == ERROR_SUMMARY:
                     continue
 
-                tmp_str = f"{valid_context_num + 1}. The summary of directory named {sub_dir_node['name']}: {sub_dir_node['summary']}\n"
+                tmp_str = f"\t- The summary of directory named {sub_dir_node['name']}: {sub_dir_node['summary']}\n"
 
                 if not self.isLegalInputText(f"{PROMPT}\n{SEPARATOR}\n{context + tmp_str}"):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
-
                     ignore_log += f"Number of ignored subdirectory: {str(len(sub_dir_nodes) - idx)}\n"
                     break
 
@@ -213,15 +212,13 @@ class Summarizer:
             for idx, file_json in enumerate(dir_json["files"]):
                 file_node = self.summarize_file(file_json)
                 file_nodes.append(file_node)
-
-                if file_node['summary'] == NO_SUMMARY:
+                if file_node['summary'] == NO_SUMMARY or file_node['summary'] == ERROR_SUMMARY:
                     continue
 
-                tmp_str = f"{valid_context_num + 1}. The summary of file named {file_node['name']}: {file_node['summary']}\n"
+                tmp_str = f"\t- The summary of file named {file_node['name']}: {file_node['summary']}\n"
 
                 if not self.isLegalInputText(f"{PROMPT}\n{SEPARATOR}\n{context + tmp_str}"):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
-
                     ignore_log += f"Number of ignored file: {str(len(dir_json['files']) - idx)}\n"
                     break
 
@@ -233,7 +230,7 @@ class Summarizer:
             summary = self.generate_summary(input_text)
 
         self.sum_logs.append(
-            f"DIRECTORY{SEPARATOR}\n{summary}\n<=\n{input_text}\n{ignore_log}")
+            f"DIRECTORY{LOG_SEPARATOR}\n{summary}\n<=\n{input_text}\n{ignore_log}")
         self.pbar.update(1)
 
         return {
