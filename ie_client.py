@@ -28,8 +28,7 @@ class IEClient:
                                  })
 
         if response.status_code != 200 or len(response.json()) == 0:
-            raise Exception(
-                f"Failed to generate summary, status code: {response.status_code}, response: {response.json()}")
+            raise Exception(response.json())
 
         return response.json()[0]['generated_text']
 
