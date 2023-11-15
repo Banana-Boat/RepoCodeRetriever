@@ -1,6 +1,6 @@
-evaluation/filtered
-evaluation/repo
-evaluation/raw
+eval_data/filtered
+eval_data/repo
+eval_data/raw
 
 java-repo-parser/target/
 java-repo-parser/repo/

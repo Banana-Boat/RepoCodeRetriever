@@ -73,6 +73,7 @@ public class JavaRepoParser {
         nodeCount++;
         dirCount++;
         return new JDirectory(
+                nodeCount,
                 pkgName,
                 dir.getPath(),
                 jFiles,
@@ -109,6 +110,7 @@ public class JavaRepoParser {
 
                         nodeCount++;
                         jClasses.add(new JClass(
+                                nodeCount,
                                 coi.getNameAsString(),
                                 signature,
                                 extractMethods(coi),
@@ -125,6 +127,7 @@ public class JavaRepoParser {
 
                         nodeCount++;
                         jClasses.add(new JClass(
+                                nodeCount,
                                 e.getNameAsString(),
                                 signature,
                                 extractMethods(e),
@@ -140,6 +143,7 @@ public class JavaRepoParser {
 
         fileCount++;
         return new JFile(
+                nodeCount,
                 file.getName(),
                 jClasses,
                 file.getPath()
@@ -181,6 +185,7 @@ public class JavaRepoParser {
 
             nodeCount++;
             jMethods.add(new JMethod(
+                    nodeCount,
                     md.getNameAsString(),
                     signature,
                     bodyContent

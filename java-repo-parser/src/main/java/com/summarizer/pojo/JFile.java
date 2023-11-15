@@ -8,6 +8,7 @@ import java.util.List;
 @Data
 @AllArgsConstructor
 public class JFile {
+  private Integer id;
   private String name;
   private List<JClass> classes;
   private String path;

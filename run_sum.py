@@ -2,7 +2,6 @@ import json
 import logging
 import os
 import sys
-import time
 from typing import Tuple
 from dotenv import load_dotenv
 from ie_client import IEClient
@@ -72,12 +71,17 @@ if __name__ == "__main__":
     # create client for Inference Endpoints
     token = os.getenv('IE_TOKEN')
     url = os.getenv('IE_URL')
-    max_input_length = os.getenv('IE_MODEL_INPUT_LENGTH')
+    max_input_length = os.getenv('IE_MAX_INPUT_LENGTH')
+    max_batch_size = os.getenv('IE_MAX_BATCH_SIZE')
     model_name = os.getenv('IE_MODEL_NAME')
     if token == None or url == None or model_name == None or max_input_length == None:
         pipeline_logger.error("Cannot get value in .env file.")
         exit(1)
-    ie_client = IEClient(url, token, model_name, int(max_input_length))
+    ie_client = IEClient(url, token, model_name,
+                         int(max_input_length), int(max_batch_size))
+    if not ie_client.check_health():
+        pipeline_logger.error("Inference Endpoints is not available.")
+        exit(1)
     pipeline_logger.info(
         "Client for Inference Endpoints was created successfully.")
 
