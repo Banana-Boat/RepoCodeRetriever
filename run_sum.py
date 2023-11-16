@@ -69,16 +69,11 @@ if __name__ == "__main__":
         f"Repo parsed successfully, log file was written to {parse_log_path}, result file was written to {parse_out_path}.")
 
     # create client for Inference Endpoints
-    token = os.getenv('IE_TOKEN')
-    url = os.getenv('IE_URL')
-    max_number_of_tokens = os.getenv('IE_MAX_NUMBER_OF_TOKENS')
-    max_batch_size = os.getenv('IE_MAX_BATCH_SIZE')
-    model_name = os.getenv('IE_MODEL_NAME')
-    if token == None or url == None or model_name == None or max_number_of_tokens == None:
-        pipeline_logger.error("Cannot get value in .env file.")
+    try:
+        ie_client = IEClient()
+    except Exception as e:
+        pipeline_logger.error(e)
         exit(1)
-    ie_client = IEClient(url, token, model_name,
-                         int(max_number_of_tokens), int(max_batch_size))
     if not ie_client.check_health():
         pipeline_logger.error("Inference Endpoints is not available.")
         exit(1)
