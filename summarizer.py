@@ -10,7 +10,7 @@ from ie_client import IEClient
 
 NO_SUMMARY = "*** Not enough context for summarization ***"
 ERROR_GENERATION = "*** Error occurred during generation ***"
-SEPARATOR = "######################################################"
+INPUT_SEPARATOR = "######################################################"
 LOG_SEPARATOR = "============================================================================================================"
 
 
@@ -24,29 +24,31 @@ class Summarizer:
         self.gen_err_count = 0  # number of generation error
 
         self.SPECIAL_TOKEN_NUM = 5
-        self.MAX_INPUT_TOKEN_NUM = ie_client.max_input_length - self.SPECIAL_TOKEN_NUM
+        self.MAX_NUMBER_OF_TOKENS = ie_client.max_number_of_tokens
 
-    def isLegalInputText(self, input_text: str):
+    def isLegalInputText(self, input_text: str, max_output_length: int) -> bool:
         '''
-            check if the input text is legal, excluding special tokens
+            Check if the input text is legal, excluding special tokens and max output length
         '''
         encoded = self.tokenizer.encode(
             input_text, add_special_tokens=False, padding=False, truncation=False)
 
-        return len(encoded) <= self.MAX_INPUT_TOKEN_NUM
+        return len(encoded) <= self.MAX_NUMBER_OF_TOKENS - self.SPECIAL_TOKEN_NUM - max_output_length
 
-    def build_input(self, node_id: int, prompt: str, context: str) -> str:
+    def build_input(self, node_id: int, prompt: str, context: str, max_output_length: int) -> str:
         '''
-            concat promp and context, add special tokens, truncate if exceeds the token limit
+            Concat promp and context, add special tokens, truncate if exceeds the token limit
         '''
-        input_text = f"{prompt}\n{SEPARATOR}\n{context}"
+        input_text = f"{prompt}\n{INPUT_SEPARATOR}\n{context}"
 
-        if not self.isLegalInputText(input_text):
+        if not self.isLegalInputText(input_text, max_output_length):
+            max_input_length = self.MAX_NUMBER_OF_TOKENS - \
+                self.SPECIAL_TOKEN_NUM - max_output_length
             encoded = self.tokenizer.encode(
                 input_text,
                 add_special_tokens=False,
                 padding=False, truncation=True,
-                max_length=self.MAX_INPUT_TOKEN_NUM  # max length don't include special tokens
+                max_length=max_input_length
             )
 
             truncated_input_text = self.tokenizer.decode(
@@ -81,8 +83,7 @@ class Summarizer:
 
     def batch_generate(self, input_dicts: List[dict], max_output_length: int) -> List[dict]:
         '''
-            generate a batch of summary through async API calls.
-            call API concurrently in max batch size.
+            Generate a batch of summary through async API calls, call API concurrently in max batch size.
             input_dicts: a list of {id: int, input_text: str}
             return: a list of {id: int, input_text: str, output_text: str}
         '''
@@ -120,11 +121,12 @@ class Summarizer:
 
     def summarize_methods(self, method_objs: List[dict]) -> List[dict]:
         '''
-            generate for methods according to func body.
+            Generate for methods according to func body.
             method_objs: a list of method_obj
             return: a list of {id: int, input_text: str, output_text: str}
         '''
         PROMPT = "Summarize the method below in about 30 words."
+        MAX_OUTPUT_LENGTH = 60
 
         if len(method_objs) == 0:
             return []
@@ -137,7 +139,7 @@ class Summarizer:
                 context = method_obj["signature"] + method_obj["body"]
                 input_dicts.append({
                     'id': method_obj['id'],
-                    'input_text': self.build_input(method_obj['id'], PROMPT, context)
+                    'input_text': self.build_input(method_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
                 })
             else:
                 res_dicts.append({
@@ -148,7 +150,7 @@ class Summarizer:
                 self.logger.info(
                     f"METHOD{LOG_SEPARATOR}\nNode ID: {method_obj['id']}\nOutput:\n{NO_SUMMARY}")
 
-        output_dicts = self.batch_generate(input_dicts, 60)
+        output_dicts = self.batch_generate(input_dicts, MAX_OUTPUT_LENGTH)
 
         for output in output_dicts:
             res_dicts.append(output)
@@ -165,51 +167,57 @@ class Summarizer:
             methods in one class can be processed in batch.
         '''
         PROMPT = f"Summarize the Java {cls_obj['type']} below in about 50 words, don't include examples and details."
+        MAX_OUTPUT_LENGTH = 100
 
         ignore_log = ""
         context = cls_obj["signature"] + " {\n"
 
-        # process methods in batch
-        bs = self.ie_client.max_batch_size
-        method_objs = cls_obj["methods"]
-        is_continue = True  # whether to continue generating batch of summary
-        for idx in range(0, len(method_objs), bs):
-            # get method_objs slice
-            method_obj_slice = []
-            if idx + bs > len(method_objs):
-                method_obj_slice = method_objs[idx:]
-            else:
-                method_obj_slice = method_objs[idx: idx+bs]
+        if len(cls_obj["methods"]) > 0:
+            # process methods in batch
+            bs = self.ie_client.max_batch_size
+            method_objs = cls_obj["methods"]
+            is_continue = True  # whether to continue generating batch of summary
 
-            output_dicts = self.summarize_methods(method_obj_slice)
+            for idx in range(0, len(method_objs), bs):
+                # get method_objs slice
+                method_obj_slice = []
+                if idx + bs > len(method_objs):
+                    method_obj_slice = method_objs[idx:]
+                else:
+                    method_obj_slice = method_objs[idx: idx+bs]
 
-            # concat summary to context
-            for output_dict in output_dicts:
-                method_obj_idx = method_obj_slice.index(
-                    next(filter(lambda x: x['id'] == output_dict['id'], method_obj_slice)))
-                method_obj = method_objs[method_obj_idx]
+                # get summary of methods
+                output_dicts = self.summarize_methods(method_obj_slice)
 
-                tmp_str = f"\t{method_obj['signature']};\n"
+                # concat summary to context
+                for output_dict in output_dicts:
+                    method_obj_idx = method_obj_slice.index(
+                        next(filter(lambda x: x['id'] == output_dict['id'], method_obj_slice)))
+                    method_obj = method_objs[method_obj_idx]
 
-                if output_dict['output_text'] != ERROR_GENERATION and output_dict['output_text'] != NO_SUMMARY:
-                    tmp_str = f"\t{method_obj['signature']}; // {output_dict['output_text']}\n"
+                    tmp_str = f"\t{method_obj['signature']};\n"
 
-                # ignore methods that exceed the token limit
-                if not self.isLegalInputText(f"{PROMPT}\n{SEPARATOR}\n{context + tmp_str}"):
-                    # the progress bar may be updated incorrectly due to the omission of some nodes
-                    ignore_log = f"Number of ignored method: {str(len(method_objs) - method_obj_idx)}\n"
-                    is_continue = False
+                    if output_dict['output_text'] != ERROR_GENERATION and output_dict['output_text'] != NO_SUMMARY:
+                        tmp_str = f"\t{method_obj['signature']}; // {output_dict['output_text']}\n"
+
+                    # ignore methods that exceed the token limit
+                    if not self.isLegalInputText(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+                        # the progress bar may be updated incorrectly due to the omission of some nodes
+                        ignore_log = f"Number of ignored method: {str(len(method_objs) - method_obj_idx)}\n"
+                        is_continue = False
+                        break
+
+                    context += tmp_str
+
+                if not is_continue:
                     break
-
-                context += tmp_str
-
-            if not is_continue:
-                break
 
         context += "}"
 
-        input_text = self.build_input(cls_obj['id'], PROMPT, context)
-        summary = self.generate(cls_obj['id'], input_text, 100)['output_text']
+        input_text = self.build_input(
+            cls_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
+        summary = self.generate(
+            cls_obj['id'], input_text, MAX_OUTPUT_LENGTH)['output_text']
 
         self.logger.info(
             f"CLASS{LOG_SEPARATOR}\nNode ID: {cls_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
@@ -224,6 +232,7 @@ class Summarizer:
             generate summary for Java file according to its class / interface / enum.
         '''
         PROMPT = "Summarize the Java file below in about 50 words, don't include examples and details."
+        MAX_OUTPUT_LENGTH = 100
 
         valid_context_num = 0  # number of valid context
         summary = NO_SUMMARY
@@ -242,7 +251,7 @@ class Summarizer:
 
                 tmp_str = f"\t- The summary of Java {cls_obj['type']} named {cls_obj['name']}: {cls_sum}\n"
 
-                if not self.isLegalInputText(f"{PROMPT}\n{SEPARATOR}\n{context + tmp_str}"):
+                if not self.isLegalInputText(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
                     ignore_log = f"Number of ignored class: {str(len(file_obj['classes']) - idx)}\n"
                     break
@@ -251,8 +260,9 @@ class Summarizer:
                 context += tmp_str
 
         if valid_context_num != 0:
-            input_text = self.build_input(file_obj['id'], PROMPT, context)
-            summary = self.generate(file_obj['id'], input_text, 100)[
+            input_text = self.build_input(
+                file_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
+            summary = self.generate(file_obj['id'], input_text, MAX_OUTPUT_LENGTH)[
                 'output_text']
 
         self.logger.info(
@@ -271,6 +281,7 @@ class Summarizer:
             generate summary for directory according to its subdirectories and files.
         '''
         PROMPT = "Summarize the directory below in about 100 words, don't include examples and details."
+        MAX_OUTPUT_LENGTH = 200
 
         # if current directory only has one subdirectory(no file),
         # concat directory name, only generate one node.
@@ -301,7 +312,7 @@ class Summarizer:
 
                 tmp_str = f"\t- The summary of directory named {sub_dir_node['name']}: {sub_dir_node['summary']}\n"
 
-                if not self.isLegalInputText(f"{PROMPT}\n{SEPARATOR}\n{context + tmp_str}"):
+                if not self.isLegalInputText(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
                     ignore_log = f"Number of ignored subdirectory: {str(len(sub_dir_nodes) - idx)}\n"
                     break
@@ -323,7 +334,7 @@ class Summarizer:
 
                 tmp_str = f"\t- The summary of file named {file_node['name']}: {file_node['summary']}\n"
 
-                if not self.isLegalInputText(f"{PROMPT}\n{SEPARATOR}\n{context + tmp_str}"):
+                if not self.isLegalInputText(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
                     ignore_log = f"Number of ignored file: {str(len(dir_obj['files']) - idx)}\n"
                     break
@@ -332,8 +343,9 @@ class Summarizer:
                 context += tmp_str
 
         if valid_context_num != 0:
-            input_text = self.build_input(dir_obj['id'], PROMPT, context)
-            summary = self.generate(dir_obj['id'], input_text, 200)[
+            input_text = self.build_input(
+                dir_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
+            summary = self.generate(dir_obj['id'], input_text, MAX_OUTPUT_LENGTH)[
                 'output_text']
 
         self.logger.info(
@@ -358,6 +370,7 @@ class Summarizer:
 
             result = self.summarize_dir(repo_obj['mainDirectory'])
 
+            self.logger.info(f"COMPLETION{LOG_SEPARATOR}")
             self.logger.info(
                 f"Number of generation error: {self.gen_err_count}")
             self.logger.info(
