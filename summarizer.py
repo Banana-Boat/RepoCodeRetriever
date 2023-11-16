@@ -6,12 +6,7 @@ from tqdm import tqdm
 from transformers import CodeLlamaTokenizer
 
 from ie_client import IEClient
-
-
-NO_SUMMARY = "*** Not enough context for summarization ***"
-ERROR_GENERATION = "*** Error occurred during generation ***"
-INPUT_SEPARATOR = "######################################################"
-LOG_SEPARATOR = "============================================================================================================"
+from constants import GENERATION_FAILED, INPUT_SEPARATOR, INSUFFICIENT_CONTEXT, LOG_SEPARATOR
 
 
 class Summarizer:
@@ -26,7 +21,7 @@ class Summarizer:
         self.SPECIAL_TOKEN_NUM = 5
         self.MAX_NUMBER_OF_TOKENS = ie_client.max_number_of_tokens
 
-    def isLegalInputText(self, input_text: str, max_output_length: int) -> bool:
+    def _is_legal_input_text(self, input_text: str, max_output_length: int) -> bool:
         '''
             Check if the input text is legal, excluding special tokens and max output length
         '''
@@ -35,13 +30,13 @@ class Summarizer:
 
         return len(encoded) <= self.MAX_NUMBER_OF_TOKENS - self.SPECIAL_TOKEN_NUM - max_output_length
 
-    def build_input(self, node_id: int, prompt: str, context: str, max_output_length: int) -> str:
+    def _build_input(self, node_id: int, prompt: str, context: str, max_output_length: int) -> str:
         '''
             Concat promp and context, add special tokens, truncate if exceeds the token limit
         '''
         input_text = f"{prompt}\n{INPUT_SEPARATOR}\n{context}"
 
-        if not self.isLegalInputText(input_text, max_output_length):
+        if not self._is_legal_input_text(input_text, max_output_length):
             max_input_length = self.MAX_NUMBER_OF_TOKENS - \
                 self.SPECIAL_TOKEN_NUM - max_output_length
             encoded = self.tokenizer.encode(
@@ -60,7 +55,7 @@ class Summarizer:
 
         return f"<s>[INST] {input_text} [/INST]"
 
-    def generate(self, node_id: int, input_text: str, max_output_length: int) -> dict:
+    def _summarize(self, node_id: int, input_text: str, max_output_length: int) -> dict:
         '''
             Generate summary through API calls.
             return: a list of {id: int, input_text: str, output_text: str}
@@ -74,14 +69,14 @@ class Summarizer:
         except Exception as e:
             self.gen_err_count += 1
             self.logger.error(
-                f"GENERATION_ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nFailed to generate summary for:\n{e}")
+                f"GENERATION FAILED{LOG_SEPARATOR}\nNode ID: {node_id}\nFailed to generate summary for:\n{e}")
             return {
                 'id': node_id,
                 'input_text': input_text,
-                'output_text': ERROR_GENERATION
+                'output_text': GENERATION_FAILED
             }
 
-    def batch_generate(self, input_dicts: List[dict], max_output_length: int) -> List[dict]:
+    def _batch_summarize(self, input_dicts: List[dict], max_output_length: int) -> List[dict]:
         '''
             Generate a batch of summary through async API calls, call API concurrently in max batch size.
             input_dicts: a list of {id: int, input_text: str}
@@ -97,7 +92,7 @@ class Summarizer:
             if len(input_dicts) <= max_bs:
                 return list(
                     executor.map(
-                        lambda x: self.generate(
+                        lambda x: self._summarize(
                             x['id'], x['input_text'], max_output_length),
                         input_dicts
                     )
@@ -105,13 +100,13 @@ class Summarizer:
 
             res_dicts = list(
                 executor.map(
-                    lambda x: self.generate(
+                    lambda x: self._summarize(
                         x['id'], x['input_text'], max_output_length),
                     input_dicts[:max_bs]
                 )
             )
             res_dicts.extend(
-                self.batch_generate(
+                self._batch_summarize(
                     input_dicts[max_bs:],
                     max_output_length
                 )
@@ -125,7 +120,7 @@ class Summarizer:
             method_objs: a list of method_obj
             return: a list of {id: int, input_text: str, output_text: str}
         '''
-        PROMPT = "Summarize the method below in about 30 words."
+        PROMPT = "Summarize the Java method below in about 30 words."
         MAX_OUTPUT_LENGTH = 60
 
         if len(method_objs) == 0:
@@ -139,18 +134,18 @@ class Summarizer:
                 context = method_obj["signature"] + method_obj["body"]
                 input_dicts.append({
                     'id': method_obj['id'],
-                    'input_text': self.build_input(method_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
+                    'input_text': self._build_input(method_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
                 })
             else:
                 res_dicts.append({
                     'id': method_obj['id'],
                     'input_text': "",
-                    'output_text': NO_SUMMARY
+                    'output_text': INSUFFICIENT_CONTEXT
                 })
                 self.logger.info(
-                    f"METHOD{LOG_SEPARATOR}\nNode ID: {method_obj['id']}\nOutput:\n{NO_SUMMARY}")
+                    f"METHOD{LOG_SEPARATOR}\nNode ID: {method_obj['id']}\nOutput:\n{INSUFFICIENT_CONTEXT}")
 
-        output_dicts = self.batch_generate(input_dicts, MAX_OUTPUT_LENGTH)
+        output_dicts = self._batch_summarize(input_dicts, MAX_OUTPUT_LENGTH)
 
         for output in output_dicts:
             res_dicts.append(output)
@@ -161,7 +156,7 @@ class Summarizer:
 
         return res_dicts
 
-    def summarize_cls(self, cls_obj) -> str:
+    def summarize_cls(self, cls_obj: dict) -> str:
         '''
             generate summary for class/interface/enum according to its methods.
             methods in one class can be processed in batch.
@@ -197,13 +192,13 @@ class Summarizer:
 
                     tmp_str = f"\t{method_obj['signature']};\n"
 
-                    if output_dict['output_text'] != ERROR_GENERATION and output_dict['output_text'] != NO_SUMMARY:
+                    if output_dict['output_text'] != GENERATION_FAILED and output_dict['output_text'] != INSUFFICIENT_CONTEXT:
                         tmp_str = f"\t{method_obj['signature']}; // {output_dict['output_text']}\n"
 
                     # ignore methods that exceed the token limit
-                    if not self.isLegalInputText(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+                    if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                         # the progress bar may be updated incorrectly due to the omission of some nodes
-                        ignore_log = f"Number of ignored method: {str(len(method_objs) - method_obj_idx)}\n"
+                        ignore_log = f"Number of ignored method: {str(len(method_objs) - method_obj_idx)}"
                         is_continue = False
                         break
 
@@ -214,9 +209,9 @@ class Summarizer:
 
         context += "}"
 
-        input_text = self.build_input(
+        input_text = self._build_input(
             cls_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
-        summary = self.generate(
+        summary = self._summarize(
             cls_obj['id'], input_text, MAX_OUTPUT_LENGTH)['output_text']
 
         self.logger.info(
@@ -227,15 +222,15 @@ class Summarizer:
 
         return summary
 
-    def summarize_file(self, file_obj) -> dict:
+    def summarize_file(self, file_obj: dict) -> dict:
         '''
             generate summary for Java file according to its class / interface / enum.
         '''
-        PROMPT = "Summarize the Java file below in about 50 words, don't include examples and details."
+        PROMPT = "Summarize the file below in about 50 words, don't include examples and details."
         MAX_OUTPUT_LENGTH = 100
 
         valid_context_num = 0  # number of valid context
-        summary = NO_SUMMARY
+        summary = INSUFFICIENT_CONTEXT
         ignore_log = ""
         input_text = ""
         context = f"File name: {file_obj['name']}.\n"
@@ -246,23 +241,23 @@ class Summarizer:
             # concat summary to context
             for idx, cls_obj in enumerate(file_obj["classes"]):
                 cls_sum = self.summarize_cls(cls_obj)
-                if cls_sum == NO_SUMMARY or cls_sum == ERROR_GENERATION:
+                if cls_sum == INSUFFICIENT_CONTEXT or cls_sum == GENERATION_FAILED:
                     continue
 
-                tmp_str = f"\t- The summary of Java {cls_obj['type']} named {cls_obj['name']}: {cls_sum}\n"
+                tmp_str = f"- The summary of Java {cls_obj['type']} named {cls_obj['name']}: {cls_sum}\n"
 
-                if not self.isLegalInputText(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+                if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
-                    ignore_log = f"Number of ignored class: {str(len(file_obj['classes']) - idx)}\n"
+                    ignore_log = f"Number of ignored class: {str(len(file_obj['classes']) - idx)}"
                     break
 
                 valid_context_num += 1
                 context += tmp_str
 
         if valid_context_num != 0:
-            input_text = self.build_input(
+            input_text = self._build_input(
                 file_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
-            summary = self.generate(file_obj['id'], input_text, MAX_OUTPUT_LENGTH)[
+            summary = self._summarize(file_obj['id'], input_text, MAX_OUTPUT_LENGTH)[
                 'output_text']
 
         self.logger.info(
@@ -272,11 +267,13 @@ class Summarizer:
         self.pbar.update(1)
 
         return {
+            "id": file_obj["id"],
             "name": file_obj["name"],
             "summary": summary,
+            "path": file_obj["path"]
         }
 
-    def summarize_dir(self, dir_obj) -> dict:
+    def summarize_dir(self, dir_obj: dict) -> dict:
         '''
             generate summary for directory according to its subdirectories and files.
         '''
@@ -291,7 +288,7 @@ class Summarizer:
             return self.summarize_dir(child_dir_obj)
 
         valid_context_num = 0  # number of valid context
-        summary = NO_SUMMARY
+        summary = INSUFFICIENT_CONTEXT
         ignore_log = ""
         input_text = ""
         context = f"Directory name: {dir_obj['name']}.\n"
@@ -307,14 +304,14 @@ class Summarizer:
 
             # concat summary to context
             for idx, sub_dir_node in enumerate(sub_dir_nodes):
-                if sub_dir_node['summary'] == NO_SUMMARY or sub_dir_node['summary'] == ERROR_GENERATION:
+                if sub_dir_node['summary'] == INSUFFICIENT_CONTEXT or sub_dir_node['summary'] == GENERATION_FAILED:
                     continue
 
-                tmp_str = f"\t- The summary of directory named {sub_dir_node['name']}: {sub_dir_node['summary']}\n"
+                tmp_str = f"- The summary of directory named {sub_dir_node['name']}: {sub_dir_node['summary']}\n"
 
-                if not self.isLegalInputText(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+                if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
-                    ignore_log = f"Number of ignored subdirectory: {str(len(sub_dir_nodes) - idx)}\n"
+                    ignore_log = f"Number of ignored subdirectory: {str(len(sub_dir_nodes) - idx)}"
                     break
 
                 valid_context_num += 1
@@ -329,23 +326,23 @@ class Summarizer:
             for idx, file_obj in enumerate(dir_obj["files"]):
                 file_node = self.summarize_file(file_obj)
                 file_nodes.append(file_node)
-                if file_node['summary'] == NO_SUMMARY or file_node['summary'] == ERROR_GENERATION:
+                if file_node['summary'] == INSUFFICIENT_CONTEXT or file_node['summary'] == GENERATION_FAILED:
                     continue
 
-                tmp_str = f"\t- The summary of file named {file_node['name']}: {file_node['summary']}\n"
+                tmp_str = f"- The summary of file named {file_node['name']}: {file_node['summary']}\n"
 
-                if not self.isLegalInputText(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+                if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
-                    ignore_log = f"Number of ignored file: {str(len(dir_obj['files']) - idx)}\n"
+                    ignore_log = f"Number of ignored file: {str(len(dir_obj['files']) - idx)}"
                     break
 
                 valid_context_num += 1
                 context += tmp_str
 
         if valid_context_num != 0:
-            input_text = self.build_input(
+            input_text = self._build_input(
                 dir_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
-            summary = self.generate(dir_obj['id'], input_text, MAX_OUTPUT_LENGTH)[
+            summary = self._summarize(dir_obj['id'], input_text, MAX_OUTPUT_LENGTH)[
                 'output_text']
 
         self.logger.info(
@@ -355,13 +352,15 @@ class Summarizer:
         self.pbar.update(1)
 
         return {
+            "id": dir_obj["id"],
             "name": dir_obj["name"],
             "summary": summary,
             "subDirectories": sub_dir_nodes,
-            "files": file_nodes
+            "files": file_nodes,
+            "path": dir_obj["path"]
         }
 
-    def summarize_repo(self, repo_obj) -> dict:
+    def summarize_repo(self, repo_obj: dict) -> dict:
         start_time = time.time()
 
         with tqdm(total=repo_obj['nodeCount']) as pbar:

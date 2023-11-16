@@ -141,6 +141,7 @@ public class JavaRepoParser {
             errorFileCount++;
         }
 
+        nodeCount++;
         fileCount++;
         return new JFile(
                 nodeCount,

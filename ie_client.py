@@ -20,7 +20,11 @@ class IEClient:
         # = context window = max_input_length + max_output_length
         self.max_number_of_tokens = int(max_number_of_tokens)
         # = number of requests processed concurrently by the server
-        self.max_batch_size = int(max_batch_size)
+        if int(max_batch_size) > 1:
+            # -1 to reduce pressure on server
+            self.max_batch_size = int(max_batch_size) - 1
+        else:
+            self.max_batch_size = 1
 
     def check_health(self) -> bool:
         res = requests.get(self.url + '/health')
