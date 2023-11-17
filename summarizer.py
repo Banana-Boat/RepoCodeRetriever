@@ -21,16 +21,15 @@ class Summarizer:
         self.truncation_count = 0  # number of truncated nodes
 
         self.SPECIAL_TOKEN_NUM = 5
-        self.MAX_NUMBER_OF_TOKENS = ie_client.max_number_of_tokens
 
     def _is_legal_input_text(self, input_text: str, max_output_length: int) -> bool:
         '''
-            Check if the input text is legal, excluding special tokens and max output length
+            Check if the input text length is less than model limit.
         '''
         encoded = self.tokenizer.encode(
             input_text, add_special_tokens=False, padding=False, truncation=False)
 
-        return len(encoded) <= self.MAX_NUMBER_OF_TOKENS - self.SPECIAL_TOKEN_NUM - max_output_length
+        return len(encoded) <= self.ie_client.max_number_of_tokens - self.SPECIAL_TOKEN_NUM - max_output_length
 
     def _build_input(self, node_id: int, prompt: str, context: str, max_output_length: int) -> str:
         '''
@@ -39,7 +38,7 @@ class Summarizer:
         input_text = f"{prompt}\n{INPUT_SEPARATOR}\n{context}"
 
         if not self._is_legal_input_text(input_text, max_output_length):
-            max_input_length = self.MAX_NUMBER_OF_TOKENS - \
+            max_input_length = self.ie_client.max_number_of_tokens - \
                 self.SPECIAL_TOKEN_NUM - max_output_length
             encoded = self.tokenizer.encode(
                 input_text,
@@ -117,9 +116,9 @@ class Summarizer:
 
             return res_dicts
 
-    def summarize_methods(self, method_objs: List[dict]) -> List[dict]:
+    def _summarize_methods(self, method_objs: List[dict]) -> List[dict]:
         '''
-            Generate summary for methods in one class, methods can be processed in batch.
+            Summarize for methods in one class, methods can be processed in batch.
             method_objs: a list of method_obj
             return: a list of {id: int, name: str, signature: str, summary: str}
         '''
@@ -171,9 +170,9 @@ class Summarizer:
 
         return method_nodes
 
-    def summarize_cls(self, cls_obj: dict) -> dict:
+    def _summarize_cls(self, cls_obj: dict) -> dict:
         '''
-            Generate summary for class/interface/enum according to its methods.
+            Summarize for class/interface/enum according to its methods.
             methods in one class can be processed in batch.
         '''
         PROMPT = f"Summarize the Java {cls_obj['type']} below in about 50 words, don't include examples and details."
@@ -183,7 +182,7 @@ class Summarizer:
         context = cls_obj["signature"] + " {\n"
 
         # handle all methods
-        method_nodes = self.summarize_methods(cls_obj["methods"])
+        method_nodes = self._summarize_methods(cls_obj["methods"])
 
         # concat summary of methods to context
         for idx, method_node in enumerate(method_nodes):
@@ -221,9 +220,9 @@ class Summarizer:
             "type": cls_obj["type"],
         }
 
-    def summarize_file(self, file_obj: dict) -> dict:
+    def _summarize_file(self, file_obj: dict) -> dict:
         '''
-            Generate summary for Java file according to its class / interface / enum.
+            Summarize for Java file according to its class / interface / enum.
         '''
         PROMPT = "Summarize the file below in about 50 words, don't include examples and details."
         MAX_OUTPUT_LENGTH = 100
@@ -237,7 +236,7 @@ class Summarizer:
         # handle all classes/interfaces/enums
         cls_nodes = []
         for cls_obj in file_obj["classes"]:
-            cls_nodes.append(self.summarize_cls(cls_obj))
+            cls_nodes.append(self._summarize_cls(cls_obj))
 
         # concat summary of classes to context
         if len(cls_nodes) > 0:
@@ -276,9 +275,9 @@ class Summarizer:
             "path": file_obj["path"],
         }
 
-    def summarize_dir(self, dir_obj: dict) -> dict:
+    def _summarize_dir(self, dir_obj: dict) -> dict:
         '''
-            Generate summary for directory according to its subdirectories and files.
+            Summarize for directory according to its subdirectories and files.
         '''
         PROMPT = "Summarize the directory below in about 100 words, don't include examples and details."
         MAX_OUTPUT_LENGTH = 200
@@ -288,7 +287,7 @@ class Summarizer:
         if (len(dir_obj["subDirectories"]) == 1 and len(dir_obj["files"]) == 0):
             child_dir_obj = dir_obj['subDirectories'][0]
             child_dir_obj['name'] = f"{dir_obj['name']}/{child_dir_obj['name']}"
-            return self.summarize_dir(child_dir_obj)
+            return self._summarize_dir(child_dir_obj)
 
         valid_context_count = 0
         summary = NO_SUMMARY
@@ -300,7 +299,7 @@ class Summarizer:
         # handle all subdirectories recursively
         sub_dir_nodes = []
         for sub_dir_obj in dir_obj["subDirectories"]:
-            sub_dir_nodes.append(self.summarize_dir(sub_dir_obj))
+            sub_dir_nodes.append(self._summarize_dir(sub_dir_obj))
 
         # concat summary of subdirectories to context
         if len(sub_dir_nodes) > 0:
@@ -323,7 +322,7 @@ class Summarizer:
         # handle all files
         file_nodes = []
         for file_obj in dir_obj["files"]:
-            file_nodes.append(self.summarize_file(file_obj))
+            file_nodes.append(self._summarize_file(file_obj))
 
         # concat summary of files to context
         if len(file_nodes) > 0:
@@ -367,13 +366,16 @@ class Summarizer:
         }
 
     def summarize_repo(self, repo_obj: dict) -> dict:
+        '''
+            Generate the summary tree for the entire repo.
+        '''
         start_time = time.time()
 
         with tqdm(total=repo_obj['nodeCount']) as pbar:
             pbar.set_description("Summarizing repo...")
             self.pbar = pbar
 
-            result = self.summarize_dir(repo_obj['mainDirectory'])
+            result = self._summarize_dir(repo_obj['mainDirectory'])
 
             self.logger.info(f"COMPLETION{LOG_SEPARATOR}")
             self.logger.info(

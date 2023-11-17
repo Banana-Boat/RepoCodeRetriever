@@ -81,6 +81,6 @@ if __name__ == "__main__":
     retriever = Retriever(ret_logger, openai_client)
     with open(sum_out_path, "r") as f_sum_out:
         sum_json = json.loads(f_sum_out.read())
-        result = retriever.retrieve(sum_json, query)
+        result = retriever.retrieve(query, sum_json)
 
     pipeline_logger.info("Done!")
