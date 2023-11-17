@@ -1,5 +1,6 @@
-import logging
 import os
+import random
+from time import sleep
 import requests
 from dotenv import load_dotenv
 
@@ -30,7 +31,7 @@ class IEClient:
         res = requests.get(self.url + '/health')
         return res.status_code == 200
 
-    def generate(self, input_text: str, max_output_length: int) -> str:
+    def generate(self, input_text: str, max_output_length: int, retries: int = 5) -> str:
         res = requests.post(self.url,
                             headers={
                                 "Authorization": f"Bearer {self.token}",
@@ -47,8 +48,14 @@ class IEClient:
                                 }
                             })
 
+        # if request failed, retry
         if res.status_code != 200 or len(res.json()) == 0:
-            raise Exception(res.json())
+            if retries > 0:
+                # wait random time to reduce pressure on server
+                sleep(random.randint(5, 25))
+                return self.generate(input_text, max_output_length, retries - 1)
+            else:
+                raise Exception(res.json())
 
         return res.json()[0]['generated_text']
 

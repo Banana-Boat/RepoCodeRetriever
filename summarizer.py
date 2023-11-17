@@ -6,7 +6,7 @@ from tqdm import tqdm
 from transformers import CodeLlamaTokenizer
 
 from ie_client import IEClient
-from constants import GENERATION_FAILED, INPUT_SEPARATOR, INSUFFICIENT_CONTEXT, LOG_SEPARATOR
+from constants import INPUT_SEPARATOR, LOG_SEPARATOR, NO_SUMMARY
 
 
 class Summarizer:
@@ -17,6 +17,8 @@ class Summarizer:
 
         self.ie_client = ie_client
         self.gen_err_count = 0  # number of generation error
+        self.total_ignore_count = 0  # number of ignored nodes
+        self.truncation_count = 0  # number of truncated nodes
 
         self.SPECIAL_TOKEN_NUM = 5
         self.MAX_NUMBER_OF_TOKENS = ie_client.max_number_of_tokens
@@ -59,6 +61,7 @@ class Summarizer:
         '''
             Generate summary through API calls.
             return: a list of {id: int, input_text: str, output_text: str}
+            the purpose of returning input_text is to facilitate logging
         '''
         try:
             return {
@@ -73,7 +76,7 @@ class Summarizer:
             return {
                 'id': node_id,
                 'input_text': input_text,
-                'output_text': GENERATION_FAILED
+                'output_text': NO_SUMMARY
             }
 
     def _batch_summarize(self, input_dicts: List[dict], max_output_length: int) -> List[dict]:
@@ -116,9 +119,9 @@ class Summarizer:
 
     def summarize_methods(self, method_objs: List[dict]) -> List[dict]:
         '''
-            Generate for methods according to func body.
+            Generate summary for methods in one class, methods can be processed in batch.
             method_objs: a list of method_obj
-            return: a list of {id: int, input_text: str, output_text: str}
+            return: a list of {id: int, name: str, signature: str, summary: str}
         '''
         PROMPT = "Summarize the Java method below in about 30 words."
         MAX_OUTPUT_LENGTH = 60
@@ -126,86 +129,75 @@ class Summarizer:
         if len(method_objs) == 0:
             return []
 
+        # assemble input dicts
         input_dicts = []
-        res_dicts = []
-
         for method_obj in method_objs:
-            if method_obj["body"] != "":
+            if method_obj["body"] != "":  # ignore methods that have no body
                 context = method_obj["signature"] + method_obj["body"]
                 input_dicts.append({
                     'id': method_obj['id'],
                     'input_text': self._build_input(method_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
                 })
-            else:
-                res_dicts.append({
-                    'id': method_obj['id'],
-                    'input_text': "",
-                    'output_text': INSUFFICIENT_CONTEXT
-                })
-                self.logger.info(
-                    f"METHOD{LOG_SEPARATOR}\nNode ID: {method_obj['id']}\nOutput:\n{INSUFFICIENT_CONTEXT}")
 
+        # generate summary
         output_dicts = self._batch_summarize(input_dicts, MAX_OUTPUT_LENGTH)
 
-        for output in output_dicts:
-            res_dicts.append(output)
-            self.logger.info(
-                f"METHOD{LOG_SEPARATOR}\nNode ID: {output['id']}\nInput:\n{output['input_text']}\nOutput:\n{output['output_text']}")
+        # assemble method nodes
+        method_nodes = []
+        for method_obj in method_objs:
+            output_dict = next(
+                filter(lambda x: x['id'] == method_obj['id'], output_dicts), None)
+
+            if output_dict != None:
+                method_nodes.append({
+                    'id': method_obj['id'],
+                    'name': method_obj['name'],
+                    'summary': output_dict['output_text'],
+                    'signature': method_obj['signature'],
+                })
+                self.logger.info(
+                    f"METHOD{LOG_SEPARATOR}\nNode ID: {method_obj['id']}\nInput:\n{output_dict['input_text']}\nOutput:\n{output_dict['output_text']}")
+            else:
+                method_nodes.append({
+                    'id': method_obj['id'],
+                    'name': method_obj['name'],
+                    'summary': NO_SUMMARY,
+                    'signature': method_obj['signature'],
+                })
+                self.logger.info(
+                    f"METHOD{LOG_SEPARATOR}\nNode ID: {method_obj['id']}\nOutput:\n{NO_SUMMARY}")
 
         self.pbar.update(len(method_objs))
 
-        return res_dicts
+        return method_nodes
 
-    def summarize_cls(self, cls_obj: dict) -> str:
+    def summarize_cls(self, cls_obj: dict) -> dict:
         '''
-            generate summary for class/interface/enum according to its methods.
+            Generate summary for class/interface/enum according to its methods.
             methods in one class can be processed in batch.
         '''
         PROMPT = f"Summarize the Java {cls_obj['type']} below in about 50 words, don't include examples and details."
         MAX_OUTPUT_LENGTH = 100
 
-        ignore_log = ""
+        ignore_method_count = 0
         context = cls_obj["signature"] + " {\n"
 
-        if len(cls_obj["methods"]) > 0:
-            # process methods in batch
-            bs = self.ie_client.max_batch_size
-            method_objs = cls_obj["methods"]
-            is_continue = True  # whether to continue generating batch of summary
+        # handle all methods
+        method_nodes = self.summarize_methods(cls_obj["methods"])
 
-            for idx in range(0, len(method_objs), bs):
-                # get method_objs slice
-                method_obj_slice = []
-                if idx + bs > len(method_objs):
-                    method_obj_slice = method_objs[idx:]
-                else:
-                    method_obj_slice = method_objs[idx: idx+bs]
+        # concat summary of methods to context
+        for idx, method_node in enumerate(method_nodes):
+            tmp_str = f"\t{method_node['signature']};\n"
 
-                # get summary of methods
-                output_dicts = self.summarize_methods(method_obj_slice)
+            if method_node['summary'] != NO_SUMMARY:
+                tmp_str = f"\t{method_node['signature']}; // {method_node['summary']}\n"
 
-                # concat summary to context
-                for output_dict in output_dicts:
-                    method_obj_idx = method_obj_slice.index(
-                        next(filter(lambda x: x['id'] == output_dict['id'], method_obj_slice)))
-                    method_obj = method_objs[method_obj_idx]
+            # ignore methods that exceed the token limit
+            if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+                ignore_method_count = len(method_nodes) - idx
+                break
 
-                    tmp_str = f"\t{method_obj['signature']};\n"
-
-                    if output_dict['output_text'] != GENERATION_FAILED and output_dict['output_text'] != INSUFFICIENT_CONTEXT:
-                        tmp_str = f"\t{method_obj['signature']}; // {output_dict['output_text']}\n"
-
-                    # ignore methods that exceed the token limit
-                    if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
-                        # the progress bar may be updated incorrectly due to the omission of some nodes
-                        ignore_log = f"Number of ignored method: {str(len(method_objs) - method_obj_idx)}"
-                        is_continue = False
-                        break
-
-                    context += tmp_str
-
-                if not is_continue:
-                    break
+            context += tmp_str
 
         context += "}"
 
@@ -216,45 +208,55 @@ class Summarizer:
 
         self.logger.info(
             f"CLASS{LOG_SEPARATOR}\nNode ID: {cls_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
-        if ignore_log != "":
-            self.logger.info(f"Ignore:\n{ignore_log}")
+        if ignore_method_count != 0:
+            self.logger.info(
+                f"Number of ignored method: {ignore_method_count}")
         self.pbar.update(1)
 
-        return summary
+        return {
+            "id": cls_obj["id"],
+            "name": cls_obj["name"],
+            "summary": summary,
+            "methods": method_nodes,
+            "type": cls_obj["type"],
+        }
 
     def summarize_file(self, file_obj: dict) -> dict:
         '''
-            generate summary for Java file according to its class / interface / enum.
+            Generate summary for Java file according to its class / interface / enum.
         '''
         PROMPT = "Summarize the file below in about 50 words, don't include examples and details."
         MAX_OUTPUT_LENGTH = 100
 
-        valid_context_num = 0  # number of valid context
-        summary = INSUFFICIENT_CONTEXT
-        ignore_log = ""
+        valid_context_count = 0
+        summary = NO_SUMMARY
+        ignore_cls_count = 0
         input_text = ""
         context = f"File name: {file_obj['name']}.\n"
 
-        if len(file_obj["classes"]) > 0:
+        # handle all classes/interfaces/enums
+        cls_nodes = []
+        for cls_obj in file_obj["classes"]:
+            cls_nodes.append(self.summarize_cls(cls_obj))
+
+        # concat summary of classes to context
+        if len(cls_nodes) > 0:
             context += "The following is the class or interface or enum in the file and the corresponding summary:\n"
 
-            # concat summary to context
-            for idx, cls_obj in enumerate(file_obj["classes"]):
-                cls_sum = self.summarize_cls(cls_obj)
-                if cls_sum == INSUFFICIENT_CONTEXT or cls_sum == GENERATION_FAILED:
+            for idx, cls_node in enumerate(cls_nodes):
+                if cls_node['summary'] == NO_SUMMARY:
                     continue
 
-                tmp_str = f"- The summary of Java {cls_obj['type']} named {cls_obj['name']}: {cls_sum}\n"
+                tmp_str = f"- The summary of Java {cls_node['type']} named {cls_node['name']}: {cls_node['summary']}\n"
 
                 if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
-                    # the progress bar may be updated incorrectly due to the omission of some nodes
-                    ignore_log = f"Number of ignored class: {str(len(file_obj['classes']) - idx)}"
+                    ignore_cls_count = len(cls_nodes) - idx
                     break
 
-                valid_context_num += 1
+                valid_context_count += 1
                 context += tmp_str
 
-        if valid_context_num != 0:
+        if valid_context_count != 0:
             input_text = self._build_input(
                 file_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
             summary = self._summarize(file_obj['id'], input_text, MAX_OUTPUT_LENGTH)[
@@ -262,20 +264,21 @@ class Summarizer:
 
         self.logger.info(
             f"FILE{LOG_SEPARATOR}\nNode ID: {file_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
-        if ignore_log != "":
-            self.logger.info(f"Ignore:\n{ignore_log}")
+        if ignore_cls_count != 0:
+            self.logger.info(f"Number of ignored class: {ignore_cls_count}")
         self.pbar.update(1)
 
         return {
             "id": file_obj["id"],
             "name": file_obj["name"],
             "summary": summary,
-            "path": file_obj["path"]
+            "classes": cls_nodes,
+            "path": file_obj["path"],
         }
 
     def summarize_dir(self, dir_obj: dict) -> dict:
         '''
-            generate summary for directory according to its subdirectories and files.
+            Generate summary for directory according to its subdirectories and files.
         '''
         PROMPT = "Summarize the directory below in about 100 words, don't include examples and details."
         MAX_OUTPUT_LENGTH = 200
@@ -287,59 +290,59 @@ class Summarizer:
             child_dir_obj['name'] = f"{dir_obj['name']}/{child_dir_obj['name']}"
             return self.summarize_dir(child_dir_obj)
 
-        valid_context_num = 0  # number of valid context
-        summary = INSUFFICIENT_CONTEXT
-        ignore_log = ""
+        valid_context_count = 0
+        summary = NO_SUMMARY
+        ignore_sub_dir_count = 0
+        ignore_file_count = 0
         input_text = ""
         context = f"Directory name: {dir_obj['name']}.\n"
 
-        # handle subdirectories recursively
+        # handle all subdirectories recursively
         sub_dir_nodes = []
         for sub_dir_obj in dir_obj["subDirectories"]:
             sub_dir_nodes.append(self.summarize_dir(sub_dir_obj))
 
-        # part of subdirectories
+        # concat summary of subdirectories to context
         if len(sub_dir_nodes) > 0:
             context += "The following is the subdirectory in the directory and the corresponding summary:\n"
 
-            # concat summary to context
             for idx, sub_dir_node in enumerate(sub_dir_nodes):
-                if sub_dir_node['summary'] == INSUFFICIENT_CONTEXT or sub_dir_node['summary'] == GENERATION_FAILED:
+                if sub_dir_node['summary'] == NO_SUMMARY:
                     continue
 
                 tmp_str = f"- The summary of directory named {sub_dir_node['name']}: {sub_dir_node['summary']}\n"
 
                 if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
-                    ignore_log = f"Number of ignored subdirectory: {str(len(sub_dir_nodes) - idx)}"
+                    ignore_sub_dir_count = len(sub_dir_nodes) - idx
                     break
 
-                valid_context_num += 1
+                valid_context_count += 1
                 context += tmp_str
 
-        # part of files
+        # handle all files
         file_nodes = []
-        if len(dir_obj["files"]) > 0:
+        for file_obj in dir_obj["files"]:
+            file_nodes.append(self.summarize_file(file_obj))
+
+        # concat summary of files to context
+        if len(file_nodes) > 0:
             context += "The following is the file in the directory and the corresponding summary:\n"
 
-            # concat summary to context
-            for idx, file_obj in enumerate(dir_obj["files"]):
-                file_node = self.summarize_file(file_obj)
-                file_nodes.append(file_node)
-                if file_node['summary'] == INSUFFICIENT_CONTEXT or file_node['summary'] == GENERATION_FAILED:
+            for idx, file_node in enumerate(file_nodes):
+                if file_node['summary'] == NO_SUMMARY:
                     continue
 
                 tmp_str = f"- The summary of file named {file_node['name']}: {file_node['summary']}\n"
 
                 if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
-                    # the progress bar may be updated incorrectly due to the omission of some nodes
-                    ignore_log = f"Number of ignored file: {str(len(dir_obj['files']) - idx)}"
+                    ignore_file_count = len(file_nodes) - idx
                     break
 
-                valid_context_num += 1
+                valid_context_count += 1
                 context += tmp_str
 
-        if valid_context_num != 0:
+        if valid_context_count != 0:
             input_text = self._build_input(
                 dir_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
             summary = self._summarize(dir_obj['id'], input_text, MAX_OUTPUT_LENGTH)[
@@ -347,17 +350,20 @@ class Summarizer:
 
         self.logger.info(
             f"DIRECTORY{LOG_SEPARATOR}\nNode ID: {dir_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
-        if ignore_log != "":
-            self.logger.info(f"Ignore:\n{ignore_log}")
+        if ignore_file_count != 0:
+            self.logger.info(f"Number of ignored file: {ignore_file_count}")
+        if ignore_sub_dir_count != 0:
+            self.logger.info(
+                f"Number of ignored subdirectory: {ignore_sub_dir_count}")
         self.pbar.update(1)
 
         return {
             "id": dir_obj["id"],
             "name": dir_obj["name"],
             "summary": summary,
+            "path": dir_obj["path"],
             "subDirectories": sub_dir_nodes,
             "files": file_nodes,
-            "path": dir_obj["path"]
         }
 
     def summarize_repo(self, repo_obj: dict) -> dict:
@@ -372,6 +378,10 @@ class Summarizer:
             self.logger.info(f"COMPLETION{LOG_SEPARATOR}")
             self.logger.info(
                 f"Number of generation error: {self.gen_err_count}")
+            self.logger.info(
+                f"Number of ignored node: {self.total_ignore_count}")
+            self.logger.info(
+                f"Number of truncated node: {self.truncation_count}")
             self.logger.info(
                 f"Summarization time cost: {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
 

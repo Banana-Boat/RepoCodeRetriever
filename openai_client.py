@@ -35,7 +35,7 @@ class OpenAIClient:
 
         return res.json()['total_available']
 
-    def generate(self, input_text: str, max_output_length: int) -> dict:
+    def generate(self, input_text: str, max_output_length: int, retries: int = 2) -> dict:
         '''
             return {total_tokens: int, output_text: str}
         '''
@@ -58,8 +58,11 @@ class OpenAIClient:
                             })
 
         if res.status_code != 200:
-            raise Exception(
-                f"OpenAI API error code: {res.status_code}\n{res.json()}")
+            if retries > 0:
+                return self.generate(input_text, max_output_length, retries - 1)
+            else:
+                raise Exception(
+                    f"OpenAI API error code: {res.status_code}\n{res.json()}")
 
         return {
             "total_tokens": res.json()['usage']['total_tokens'],
