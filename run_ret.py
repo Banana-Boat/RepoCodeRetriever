@@ -77,10 +77,10 @@ if __name__ == "__main__":
     pipeline_logger.info(
         "Client for OpenAI was created successfully.")
 
-    # retrieve code for query
+    # retrieve method according to the description
     retriever = Retriever(ret_logger, openai_client)
     with open(sum_out_path, "r") as f_sum_out:
-        sum_json = json.loads(f_sum_out.read())
-        result = retriever.retrieve(query, sum_json)
+        repo_sum_obj = json.loads(f_sum_out.read())
+        result = retriever.retrieve_in_repo(query, repo_sum_obj)
 
     pipeline_logger.info("Done!")

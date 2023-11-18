@@ -83,8 +83,8 @@ if __name__ == "__main__":
     # build summary tree for entire repo
     summarizer = Summarizer(sum_logger, ie_client)
     with open(parse_out_path, "r") as f_parse_out:
-        parsed_json = json.loads(f_parse_out.read())
-        result = summarizer.summarize_repo(parsed_json)
+        repo_obj = json.loads(f_parse_out.read())
+        result = summarizer.summarize_repo(repo_obj)
 
         # write result to file
         with open(sum_out_path, "w") as f_sum_out:

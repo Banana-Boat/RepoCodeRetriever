@@ -1,4 +1,5 @@
 import os
+from typing import Tuple
 import requests
 from dotenv import load_dotenv
 
@@ -35,9 +36,9 @@ class OpenAIClient:
 
         return res.json()['total_available']
 
-    def generate(self, input_text: str, max_output_length: int, retries: int = 2) -> dict:
+    def generate(self, system_input_text: str, user_input_text: str, max_output_length: int, retries: int = 2) -> Tuple[int, str]:
         '''
-            return {total_tokens: int, output_text: str}
+            return total_tokens and output_text
         '''
         res = requests.post("https://api.openai.com/v1/chat/completions",
                             headers={
@@ -48,8 +49,12 @@ class OpenAIClient:
                                 "model": self.model_name,
                                 "messages": [
                                     {
+                                        "role": "system",
+                                        "content": system_input_text
+                                    },
+                                    {
                                         "role": "user",
-                                        "content": input_text
+                                        "content": user_input_text
                                     }
                                 ],
                                 "max_tokens": max_output_length,
@@ -64,10 +69,7 @@ class OpenAIClient:
                 raise Exception(
                     f"OpenAI API error code: {res.status_code}\n{res.json()}")
 
-        return {
-            "total_tokens": res.json()['usage']['total_tokens'],
-            "output_text": res.json()['choices'][0]['message']['content']
-        }
+        return res.json()['usage']['total_tokens'], res.json()['choices'][0]['message']['content']
 
 
 if __name__ == '__main__':
@@ -81,16 +83,16 @@ if __name__ == '__main__':
 
     print(openai_client.get_credit_grants())
 
-#     input_text = '''Summarize the directory below in about 100 words, don't include examples and details.
-# ######################################################
-# Directory name: timer.
-# The following is the file in the directory and the corresponding summary:
-# 	- The summary of file named ZTimer.java:   The ZTimer class provides methods for creating and managing timers, while the Timer class provides methods for setting and resetting an interval, as well as canceling the timer.
-# 	- The summary of file named ZTicker.java:   The ZTicker class provides methods for adding timer and ticket objects, as well as a method to determine the minimum of their timeouts. It also has an execute() method that combines the results of the timer and ticket methods.
-# 	- The summary of file named TimerHandler.java:   The TimerHandler interface extends the Timers.Handler interface and defines a single method, time, which takes an arbitrary number of Object arguments.
-# 	- The summary of file named ZTicket.java:   The ZTicket class manages a list of tickets with a delay and a handler. It provides methods to add new tickets, check the time difference between the start time of the first ticket and the current time plus the delay of the first ticket, and execute the tickets. The class also provides a method to sort the tickets if necessary. The Ticket class implements the Comparable interface and provides methods for resetting and canceling a timer, as well as comparing the start
-# '''
+    input_text = '''Summarize the directory below in about 100 words, don't include examples and details.
+######################################################
+Directory name: timer.
+The following is the file in the directory and the corresponding summary:
+	- The summary of file named ZTimer.java:   The ZTimer class provides methods for creating and managing timers, while the Timer class provides methods for setting and resetting an interval, as well as canceling the timer.
+	- The summary of file named ZTicker.java:   The ZTicker class provides methods for adding timer and ticket objects, as well as a method to determine the minimum of their timeouts. It also has an execute() method that combines the results of the timer and ticket methods.
+	- The summary of file named TimerHandler.java:   The TimerHandler interface extends the Timers.Handler interface and defines a single method, time, which takes an arbitrary number of Object arguments.
+	- The summary of file named ZTicket.java:   The ZTicket class manages a list of tickets with a delay and a handler. It provides methods to add new tickets, check the time difference between the start time of the first ticket and the current time plus the delay of the first ticket, and execute the tickets. The class also provides a method to sort the tickets if necessary. The Ticket class implements the Comparable interface and provides methods for resetting and canceling a timer, as well as comparing the start
+'''
 
-#     output = openai_client.generate(input_text, 200)
+    output = openai_client.generate(input_text, 200)
 
-#     print(output)
+    print(output)

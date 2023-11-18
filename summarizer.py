@@ -6,7 +6,7 @@ from tqdm import tqdm
 from transformers import CodeLlamaTokenizer
 
 from ie_client import IEClient
-from constants import INPUT_SEPARATOR, LOG_SEPARATOR, NO_SUMMARY
+from constants import INPUT_SEPARATOR, LOG_SEPARATOR, NO_SUMMARY, SUM_CLS, SUM_DIR, SUM_FILE, SUM_METHOD
 
 
 class Summarizer:
@@ -122,8 +122,8 @@ class Summarizer:
             method_objs: a list of method_obj
             return: a list of {id: int, name: str, signature: str, summary: str}
         '''
-        PROMPT = "Summarize the Java method below in about 30 words."
-        MAX_OUTPUT_LENGTH = 60
+        PROMPT = SUM_METHOD['prompt']
+        MAX_OUTPUT_LENGTH = SUM_METHOD['max_output_length']
 
         if len(method_objs) == 0:
             return []
@@ -175,8 +175,8 @@ class Summarizer:
             Summarize for class/interface/enum according to its methods.
             methods in one class can be processed in batch.
         '''
-        PROMPT = f"Summarize the Java {cls_obj['type']} below in about 50 words, don't include examples and details."
-        MAX_OUTPUT_LENGTH = 100
+        PROMPT = SUM_CLS['prompt'].format(cls_obj['type'])
+        MAX_OUTPUT_LENGTH = SUM_CLS['max_output_length']
 
         ignore_method_count = 0
         context = cls_obj["signature"] + " {\n"
@@ -224,8 +224,8 @@ class Summarizer:
         '''
             Summarize for Java file according to its class / interface / enum.
         '''
-        PROMPT = "Summarize the file below in about 50 words, don't include examples and details."
-        MAX_OUTPUT_LENGTH = 100
+        PROMPT = SUM_FILE['prompt']
+        MAX_OUTPUT_LENGTH = SUM_FILE['max_output_length']
 
         valid_context_count = 0
         summary = NO_SUMMARY
@@ -279,13 +279,13 @@ class Summarizer:
         '''
             Summarize for directory according to its subdirectories and files.
         '''
-        PROMPT = "Summarize the directory below in about 100 words, don't include examples and details."
-        MAX_OUTPUT_LENGTH = 200
+        PROMPT = SUM_DIR['prompt']
+        MAX_OUTPUT_LENGTH = SUM_DIR['max_output_length']
 
         # if current directory only has one subdirectory(no file),
         # concat directory name, only generate one node.
-        if (len(dir_obj["subDirectories"]) == 1 and len(dir_obj["files"]) == 0):
-            child_dir_obj = dir_obj['subDirectories'][0]
+        if (len(dir_obj["subdirectories"]) == 1 and len(dir_obj["files"]) == 0):
+            child_dir_obj = dir_obj['subdirectories'][0]
             child_dir_obj['name'] = f"{dir_obj['name']}/{child_dir_obj['name']}"
             return self._summarize_dir(child_dir_obj)
 
@@ -298,7 +298,7 @@ class Summarizer:
 
         # handle all subdirectories recursively
         sub_dir_nodes = []
-        for sub_dir_obj in dir_obj["subDirectories"]:
+        for sub_dir_obj in dir_obj["subdirectories"]:
             sub_dir_nodes.append(self._summarize_dir(sub_dir_obj))
 
         # concat summary of subdirectories to context
@@ -361,7 +361,7 @@ class Summarizer:
             "name": dir_obj["name"],
             "summary": summary,
             "path": dir_obj["path"],
-            "subDirectories": sub_dir_nodes,
+            "subdirectories": sub_dir_nodes,
             "files": file_nodes,
         }
 
