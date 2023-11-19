@@ -40,10 +40,8 @@ def create_loggers(ret_log_path: str) -> Tuple[logging.Logger, logging.Logger]:
 if __name__ == "__main__":
     load_dotenv()  # load environment variables from .env file
 
-    query = sys.argv[2]  # get query from cli args
-
-    repo_path = sys.argv[1]  # get repo path from cli args
-    repo_name = repo_path.split("/")[-1]
+    repo_name = "jeromq"
+    query = "Removes an element from the front end of the queue."
 
     # handle paths
     result_dir_path = "./result"
@@ -56,9 +54,6 @@ if __name__ == "__main__":
     pipeline_logger, ret_logger = create_loggers(ret_log_path)
 
     # check if existence of path
-    if not os.path.exists(repo_path):
-        pipeline_logger.error("Repo's path does not exist.")
-        exit(1)
     if not os.path.exists(sum_out_path):
         pipeline_logger.error("Summary output path does not exist.")
         exit(1)
@@ -82,5 +77,7 @@ if __name__ == "__main__":
     with open(sum_out_path, "r") as f_sum_out:
         repo_sum_obj = json.loads(f_sum_out.read())
         result = retriever.retrieve_in_repo(query, repo_sum_obj)
+
+        pipeline_logger.info(f"The result of retrieval:\n{result}")
 
     pipeline_logger.info("Done!")

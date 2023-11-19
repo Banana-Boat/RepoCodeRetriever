@@ -1,7 +1,11 @@
 import os
+import random
+from time import sleep
 from typing import Tuple
 import requests
 from dotenv import load_dotenv
+
+from constants import RET_MAX_OUTPUT_LENGTH, RET_SCOPE_SYSTEM_PROMPT
 
 
 class OpenAIClient:
@@ -36,40 +40,51 @@ class OpenAIClient:
 
         return res.json()['total_available']
 
-    def generate(self, system_input_text: str, user_input_text: str, max_output_length: int, retries: int = 2) -> Tuple[int, str]:
+    def generate(self, system_input_text: str, user_input_text: str, max_output_length: int) -> Tuple[int, str]:
         '''
             return total_tokens and output_text
         '''
-        res = requests.post("https://api.openai.com/v1/chat/completions",
-                            headers={
-                                "Authorization": f"Bearer {self.token}",
-                                "Content-Type": "application/json"
-                            },
-                            json={
-                                "model": self.model_name,
-                                "messages": [
-                                    {
-                                        "role": "system",
-                                        "content": system_input_text
+        error_msg = ""
+
+        for _ in range(3):  # retry 3 times at most when a error occurred
+            try:
+                res = requests.post("https://api.openai.com/v1/chat/completions",
+                                    timeout=10,
+                                    headers={
+                                        "Authorization": f"Bearer {self.token}",
+                                        "Content-Type": "application/json"
                                     },
-                                    {
-                                        "role": "user",
-                                        "content": user_input_text
-                                    }
-                                ],
-                                "max_tokens": max_output_length,
-                                "n": 1,
-                                "temperature": 0.2,
-                            })
+                                    json={
+                                        "model": self.model_name,
+                                        "messages": [
+                                            {
+                                                "role": "system",
+                                                "content": system_input_text
+                                            },
+                                            {
+                                                "role": "user",
+                                                "content": user_input_text
+                                            }
+                                        ],
+                                        "max_tokens": max_output_length,
+                                        "n": 1,
+                                        "temperature": 0.2,
+                                    })
 
-        if res.status_code != 200:
-            if retries > 0:
-                return self.generate(input_text, max_output_length, retries - 1)
-            else:
-                raise Exception(
-                    f"OpenAI API error code: {res.status_code}\n{res.json()}")
+                if res.status_code != 200:
+                    error_msg = f"OpenAI API error code: {res.status_code}\n{res.json()}"
+                    # wait random time to reduce pressure on server
+                    sleep(random.randint(5, 15))
+                    continue
 
-        return res.json()['usage']['total_tokens'], res.json()['choices'][0]['message']['content']
+                return res.json()['usage']['total_tokens'], res.json()['choices'][0]['message']['content']
+            except Exception as e:
+                error_msg = e
+                # wait random time to reduce pressure on server
+                sleep(random.randint(5, 15))
+                continue
+
+        raise Exception(error_msg)
 
 
 if __name__ == '__main__':
@@ -81,18 +96,22 @@ if __name__ == '__main__':
         print(e)
         exit(1)
 
-    print(openai_client.get_credit_grants())
+    if openai_client.get_credit_grants() < 2.0:
+        print("Not enough credits to retrieval.")
+        exit(1)
 
-    input_text = '''Summarize the directory below in about 100 words, don't include examples and details.
-######################################################
-Directory name: timer.
-The following is the file in the directory and the corresponding summary:
-	- The summary of file named ZTimer.java:   The ZTimer class provides methods for creating and managing timers, while the Timer class provides methods for setting and resetting an interval, as well as canceling the timer.
-	- The summary of file named ZTicker.java:   The ZTicker class provides methods for adding timer and ticket objects, as well as a method to determine the minimum of their timeouts. It also has an execute() method that combines the results of the timer and ticket methods.
-	- The summary of file named TimerHandler.java:   The TimerHandler interface extends the Timers.Handler interface and defines a single method, time, which takes an arbitrary number of Object arguments.
-	- The summary of file named ZTicket.java:   The ZTicket class manages a list of tickets with a delay and a handler. It provides methods to add new tickets, check the time difference between the start time of the first ticket and the current time plus the delay of the first ticket, and execute the tickets. The class also provides a method to sort the tickets if necessary. The Ticket class implements the Comparable interface and provides methods for resetting and canceling a timer, as well as comparing the start
+    user_input_text = '''Method Description: Returns true if there is at least one message to read in the pipe.
+Summary:
+{'id': 72, 'name': 'pipe', 'summary': ' The directory contains several Java classes and interfaces related to pipes and queues. The main classes are YPipeBase, YPipe, YQueue, Pipe, and DBuffer. YPipeBase is an interface that provides methods for writing, reading, and flushing data through a pipe. YPipe is a class that implements YPipeBase and provides methods for writing, unwriting, flushing, and reading values from a queue. YQueue is a data structure that implements a queue using a circular array. Pipe is a bi-directional communication channel between two peers. DBuffer is a double-ended queue that allows for efficient reading and writing of messages. YPipeConflate is a class that implements YPipeBase and provides a buffered pipe for writing and reading values.'}
+{'id': 422, 'name': 'poll', 'summary': ' The directory contains several Java classes related to polling. The PollerBase class provides a basic framework for implementing a polling mechanism, while the Poller class manages a Selector object and a HashMap of selected keys. The PollItem class wraps a SelectableChannel object and provides methods for checking the readiness of a socket. The IPollEvents interface defines five methods that are not implemented and throw an UnsupportedOperationException when called.'}
+{'id': 120, 'name': 'ZObject.java', 'summary': ' The file ZObject.java contains an abstract class named ZObject that provides methods for processing commands and managing endpoints. The class has methods for registering and unregistering endpoints, finding endpoints, and sending commands to other threads. It also has methods for processing various types of commands, such as processActivateRead, processActivateWrite, and processStop. The class has abstract methods that must be implemented by any subclass.'}
+{'id': 162, 'name': 'Msg.java', 'summary': ' The file contains three classes: Msg, Builder, and Type. The Msg class represents a message in a byte buffer and provides methods for reading and writing data, checking the type and flags, and copying data. The Builder class extends Msg and provides methods for building a message. The Type enum is an empty enumeration used to define named constants for different types of data.'}
+{'id': 189, 'name': 'Ctx.java', 'summary': ' The file contains four classes and one enum:\n\n* Ctx is a context object in the ZeroMQ library that manages sockets and endpoints.\n* Endpoint is a Java class that represents a network endpoint.\n* PendingConnection is a placeholder for a connection that is being established.\n* Side is an empty enumeration that represents the two sides of an object.'}
+{'id': 254, 'name': 'SocketBase.java', 'summary': ' The file contains three classes: SocketBase, EndpointPipe, and SimpleURI. SocketBase is an abstract class that provides a base implementation for various socket types. EndpointPipe represents a pipe that connects two endpoints, and SimpleURI provides a simple way to create a SimpleURI object from a String value representing a URI.'}
+{'id': 258, 'name': 'Command.java', 'summary': ' The file contains a Java class named Command and an enum named Type. The Command class has a single method process() that calls the processCommand() method on an object of type destination passing this as an argument. The Type enum is an empty enum in Java used to define a set of named constants that can be used to represent different types of data.'}
 '''
 
-    output = openai_client.generate(input_text, 200)
+    output = openai_client.generate(
+        RET_SCOPE_SYSTEM_PROMPT, user_input_text, RET_MAX_OUTPUT_LENGTH)
 
     print(output)

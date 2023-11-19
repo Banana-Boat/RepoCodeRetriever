@@ -37,7 +37,7 @@ if __name__ == "__main__":
     load_dotenv()  # load environment variables from .env file
 
     # handle paths
-    repo_path = sys.argv[1]  # get repo_path from cli args
+    repo_path = "./result/jeromq"
     repo_name = repo_path.split("/")[-1]
 
     result_dir_path = "./result"
