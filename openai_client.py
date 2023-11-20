@@ -5,7 +5,7 @@ from typing import Tuple
 import requests
 from dotenv import load_dotenv
 
-from constants import RET_MAX_OUTPUT_LENGTH, RET_SCOPE_SYSTEM_PROMPT
+from constants import RET_MAX_OUTPUT_LENGTH
 
 
 class OpenAIClient:
@@ -46,7 +46,7 @@ class OpenAIClient:
         '''
         error_msg = ""
 
-        for _ in range(3):  # retry 3 times at most when a error occurred
+        for _ in range(5):  # retry 5 times at most when a error occurred
             try:
                 res = requests.post("https://api.openai.com/v1/chat/completions",
                                     timeout=10,
@@ -74,14 +74,14 @@ class OpenAIClient:
                 if res.status_code != 200:
                     error_msg = f"OpenAI API error code: {res.status_code}\n{res.json()}"
                     # wait random time to reduce pressure on server
-                    sleep(random.randint(5, 15))
+                    sleep(random.randint(15, 25))
                     continue
 
                 return res.json()['usage']['total_tokens'], res.json()['choices'][0]['message']['content']
             except Exception as e:
                 error_msg = e
                 # wait random time to reduce pressure on server
-                sleep(random.randint(5, 15))
+                sleep(random.randint(15, 25))
                 continue
 
         raise Exception(error_msg)
@@ -100,18 +100,29 @@ if __name__ == '__main__':
         print("Not enough credits to retrieval.")
         exit(1)
 
+    system_input_text = '''You will be provided with a description of a Java method in a Java code repository, as well as a information list of directories or files or Java classes/interfaces/enums in this repository in JSON format as follows:
+{"id": <PLACEHOLDER>, "name": <PLACEHOLDER>, "summary": <PLACEHOLDER>}
+A directory contains files and subdirectories, a file contains Java classes/interfaces/enums, and a Java class/interface/enum contains methods.
+- Step 1: You need to calculate the probability that these directories or files or Java classes/interfaces/enums contain this method directly or indirectly.
+NOTICE: If a directory or file contains interfaces or enums but no class, the probability should be the lowest.
+- Step 2: Sort them from high to low according to the probability, return the option ID list.
+- Step 3: Give a reason of about 50 words.
+The answer in JSON format is as follows:
+{"ids": [<PLACEHOLDER>...], "reason": <PLACEHOLDER>}
+'''
+
     user_input_text = '''Method Description: Returns true if there is at least one message to read in the pipe.
-Summary:
-{'id': 72, 'name': 'pipe', 'summary': ' The directory contains several Java classes and interfaces related to pipes and queues. The main classes are YPipeBase, YPipe, YQueue, Pipe, and DBuffer. YPipeBase is an interface that provides methods for writing, reading, and flushing data through a pipe. YPipe is a class that implements YPipeBase and provides methods for writing, unwriting, flushing, and reading values from a queue. YQueue is a data structure that implements a queue using a circular array. Pipe is a bi-directional communication channel between two peers. DBuffer is a double-ended queue that allows for efficient reading and writing of messages. YPipeConflate is a class that implements YPipeBase and provides a buffered pipe for writing and reading values.'}
-{'id': 422, 'name': 'poll', 'summary': ' The directory contains several Java classes related to polling. The PollerBase class provides a basic framework for implementing a polling mechanism, while the Poller class manages a Selector object and a HashMap of selected keys. The PollItem class wraps a SelectableChannel object and provides methods for checking the readiness of a socket. The IPollEvents interface defines five methods that are not implemented and throw an UnsupportedOperationException when called.'}
-{'id': 120, 'name': 'ZObject.java', 'summary': ' The file ZObject.java contains an abstract class named ZObject that provides methods for processing commands and managing endpoints. The class has methods for registering and unregistering endpoints, finding endpoints, and sending commands to other threads. It also has methods for processing various types of commands, such as processActivateRead, processActivateWrite, and processStop. The class has abstract methods that must be implemented by any subclass.'}
-{'id': 162, 'name': 'Msg.java', 'summary': ' The file contains three classes: Msg, Builder, and Type. The Msg class represents a message in a byte buffer and provides methods for reading and writing data, checking the type and flags, and copying data. The Builder class extends Msg and provides methods for building a message. The Type enum is an empty enumeration used to define named constants for different types of data.'}
-{'id': 189, 'name': 'Ctx.java', 'summary': ' The file contains four classes and one enum:\n\n* Ctx is a context object in the ZeroMQ library that manages sockets and endpoints.\n* Endpoint is a Java class that represents a network endpoint.\n* PendingConnection is a placeholder for a connection that is being established.\n* Side is an empty enumeration that represents the two sides of an object.'}
-{'id': 254, 'name': 'SocketBase.java', 'summary': ' The file contains three classes: SocketBase, EndpointPipe, and SimpleURI. SocketBase is an abstract class that provides a base implementation for various socket types. EndpointPipe represents a pipe that connects two endpoints, and SimpleURI provides a simple way to create a SimpleURI object from a String value representing a URI.'}
-{'id': 258, 'name': 'Command.java', 'summary': ' The file contains a Java class named Command and an enum named Type. The Command class has a single method process() that calls the processCommand() method on an object of type destination passing this as an argument. The Type enum is an empty enum in Java used to define a set of named constants that can be used to represent different types of data.'}
+##################################################################
+Information List:
+{'id': 8, 'name': 'YPipeBase.java', 'summary': '  The file `YPipeBase.java` contains an interface named `YPipeBase` that provides methods for writing, reading, and flushing data through a pipe. The interface defines methods for writing data to the pipe, undoing the last write, flushing the pipe, checking if there is data available to read, reading data from the pipe, and probing the pipe.'}
+{'id': 16, 'name': 'YPipe.java', 'summary': '  The YPipe.java file contains a Java class named YPipe that implements the YPipeBase interface and provides methods for writing, unwriting, flushing, and reading values from a queue. It also has a probe() method that checks if the queue is empty and returns the front element if it is not.'}
+{'id': 26, 'name': 'YQueue.java', 'summary': '  The YQueue class is a data structure that implements a queue using a circular array. It has methods to add and remove elements from the front and back of the queue, as well as methods to retrieve the front and back elements. The queue is implemented using a combination of two chunks, with the frontChunk containing the front elements and the backChunk containing the back elements. The frontPos and backPos variables keep track of the position.'}
+{'id': 55, 'name': 'Pipe.java', 'summary': '  The Pipe class is a bi-directional communication channel between two peers. It has methods for reading and writing messages, handling hiccups and termination requests, and setting high and low water marks. The class extends the ZObject class and implements the IPipeEvents interface. The IPipeEvents interface defines four methods that are called when certain events occur in a pipe.'}
+{'id': 63, 'name': 'DBuffer.java', 'summary': '  The DBuffer class is a double-ended queue (deque) that allows for efficient reading and writing of messages. It has methods for adding and retrieving messages, as well as a probe() method that allows for peeking at the front element of the queue without removing it. The class also has a checkRead() method that checks a boolean flag hasMsg and returns the result after acquiring and releasing a lock on a shared resource.'}
+{'id': 71, 'name': 'YPipeConflate.java', 'summary': '  The `YPipeConflate` class implements the `YPipeBase` interface and provides a buffered pipe for writing and reading values. It has methods for writing, returning `null`, flushing, and checking if the buffer has been read.'}
 '''
 
     output = openai_client.generate(
-        RET_SCOPE_SYSTEM_PROMPT, user_input_text, RET_MAX_OUTPUT_LENGTH)
+        system_input_text, user_input_text, RET_MAX_OUTPUT_LENGTH)
 
     print(output)

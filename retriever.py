@@ -1,10 +1,11 @@
 import json
 import logging
+import re
 import time
 from typing import List
 
 import tiktoken
-from constants import LOG_SEPARATOR, RET_MAX_OUTPUT_LENGTH, RET_METHOD_SYSTEM_PROMPT, RET_SCOPE_ID_COUNT, RET_SCOPE_SYSTEM_PROMPT
+from constants import INPUT_SEPARATOR, LOG_SEPARATOR, RET_MAX_OUTPUT_LENGTH, RET_METHOD_SYSTEM_PROMPT, RET_SCOPE_MAX_TRY_NUM, RET_SCOPE_SYSTEM_PROMPT
 
 from openai_client import OpenAIClient
 
@@ -39,8 +40,14 @@ class Retriever:
             self.token_used_count += total_tokens
 
             try:
+                # get json object in output_text
+                match = re.search(r'\{.*\}', output_text, re.DOTALL)
+                if not match:
+                    raise Exception()
+                json_text = match.group(0)
+
                 # check if the inference result is formatted
-                infer_obj = json.loads(output_text)
+                infer_obj = json.loads(json_text)
                 if 'id' not in infer_obj or 'reason' not in infer_obj or \
                         not isinstance(infer_obj['id'], int):
                     raise Exception()
@@ -51,7 +58,7 @@ class Retriever:
                 return infer_obj
             except Exception as e:
                 self.logger.error(
-                    f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nThe inference result is not formatted, output text:\n{output_text}")
+                    f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nThe inference result is not formatted, output text:\n{output_text}\n{e}")
                 return None
         except Exception as e:
             self.logger.error(
@@ -66,30 +73,30 @@ class Retriever:
         '''
         try:
             total_tokens, output_text = self.openai_client.generate(
-                RET_METHOD_SYSTEM_PROMPT, user_input_text, RET_MAX_OUTPUT_LENGTH)
+                RET_SCOPE_SYSTEM_PROMPT, user_input_text, RET_MAX_OUTPUT_LENGTH)
             self.token_used_count += total_tokens
 
             try:
+                # get json object in output_text
+                match = re.search(r'\{.*\}', output_text, re.DOTALL)
+                if not match:
+                    raise Exception()
+                json_text = match.group(0)
+
                 # check if the inference result is formatted
-                infer_obj = json.loads(output_text)
+                infer_obj = json.loads(json_text)
                 if 'ids' not in infer_obj or 'reason' not in infer_obj or \
                         not isinstance(infer_obj['ids'], list) or \
                         not all(isinstance(x, int) for x in infer_obj['ids']):
                     raise Exception()
 
-                # check if the number of ids exceeds the limit
-                if len(infer_obj['ids']) > RET_SCOPE_ID_COUNT:
-                    self.logger.error(
-                        f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nThe number of ID exceeds the limit.")
-                    return None
-
                 self.logger.info(
-                    f"INFERENCE{LOG_SEPARATOR}\nNode ID: {node_id}\nUser Input:\n{user_input_text}\nOutput:\n{infer_obj}")
+                    f"INFERENCE{LOG_SEPARATOR}\nNode ID: {node_id}\nSystem Input:\n{RET_SCOPE_SYSTEM_PROMPT}\nUser Input:\n{user_input_text}\nOutput:\n{infer_obj}")
 
                 return infer_obj
             except Exception as e:
                 self.logger.error(
-                    f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nThe inference result is not formatted, output text:\n{output_text}")
+                    f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nThe inference result is not formatted, output text:\n{output_text}\n{e}")
                 return None
         except Exception as e:
             self.logger.error(
@@ -101,7 +108,7 @@ class Retriever:
             Retrieve the method according to the description and the summary of the class.
             return {is_found: bool, need_backtrack: bool, path: str | None}, path is str only when is_found is True.
         '''
-        user_input_text = f"Method Description: {des}\n{LOG_SEPARATOR}\nSummary:\n"
+        user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
 
         # check number of valid context
         if len(cls_sum_obj['methods']) == 0:
@@ -117,6 +124,7 @@ class Retriever:
             temp_obj = {
                 'id': method_sum_obj['id'],
                 'name': method_sum_obj['name'],
+                'signature': method_sum_obj['signature'],
                 'summary': method_sum_obj['summary'],
             }
             temp_str = f"{temp_obj}\n"
@@ -170,7 +178,7 @@ class Retriever:
             Retrieve the method according to the description and the summary of the file.
             return {is_found: bool, need_backtrack: bool, path: str | None}, path is str only when is_found is True.
         '''
-        user_input_text = f"Method Description: {des}\n{LOG_SEPARATOR}\nSummary:\n"
+        user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
 
         # check number of valid context
         if len(file_sum_obj['classes']) == 0:
@@ -186,6 +194,7 @@ class Retriever:
             temp_obj = {
                 'id': cls_sum_obj['id'],
                 'name': cls_sum_obj['name'],
+                'type': cls_sum_obj['type'],
                 'summary': cls_sum_obj['summary'],
             }
             temp_str = f"{temp_obj}\n"
@@ -210,7 +219,7 @@ class Retriever:
             }
 
         # try ids in turn
-        for infer_id in infer_obj['ids']:
+        for infer_id in infer_obj['ids'][:RET_SCOPE_MAX_TRY_NUM]:
             cls_sum_obj = next(
                 filter(lambda x: x['id'] == infer_id, file_sum_obj['classes']), None)
             if cls_sum_obj is None:
@@ -237,7 +246,7 @@ class Retriever:
             Retrieve the method according to the description and the summary of the directory.
             return {is_found: bool, need_backtrack: bool, path: str | None}, path is str only when is_found is True.
         '''
-        user_input_text = f"Method Description: {des}\n{LOG_SEPARATOR}\nSummary:\n"
+        user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
 
         # check number of valid context
         if len(dir_sum_obj['subdirectories']) == 0 and len(dir_sum_obj['files']) == 0:
@@ -295,32 +304,31 @@ class Retriever:
             }
 
         # try ids in turn
-        for infer_id in infer_obj['ids']:
+        for infer_id in infer_obj['ids'][:RET_SCOPE_MAX_TRY_NUM]:
+            file_sum_obj = None
+            sub_dir_sum_obj = None
             res = None
-            next_sum_obj = None
 
-            # find next_sum_obj in files
-            next_sum_obj = next(
+            # find next_sum_obj according to infer_id
+            file_sum_obj = next(
                 filter(lambda x: x['id'] == infer_id, dir_sum_obj['files']), None)
-            if next_sum_obj is not None:
-                res = self._retrieve_in_file(
-                    des, next_sum_obj, f"{path}/{next_sum_obj['name']}")
-
-            # find next_sum_obj in subdirectories
-            next_sum_obj = next(
+            sub_dir_sum_obj = next(
                 filter(lambda x: x['id'] == infer_id, dir_sum_obj['subdirectories']), None)
-            if next_sum_obj is not None:
-                res = self._retrieve_in_dir(
-                    des, next_sum_obj, f"{path}/{next_sum_obj['name']}")
 
-            # can't find next_sum_obj
-            if next_sum_obj is None:
+            if file_sum_obj is None and sub_dir_sum_obj is None:
+                # can't find next_sum_obj
                 self.logger.info(
                     f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nThe file or subdirectory is not found in this directory.")
                 return {
                     'is_found': False,
                     'need_backtrack': False,
                 }
+            elif file_sum_obj is not None:
+                res = self._retrieve_in_file(
+                    des, file_sum_obj, f"{path}/{file_sum_obj['name']}")
+            elif sub_dir_sum_obj is not None:
+                res = self._retrieve_in_dir(
+                    des, sub_dir_sum_obj, f"{path}/{sub_dir_sum_obj['name']}")
 
             if res['is_found'] or not res['need_backtrack']:
                 return res
@@ -346,8 +354,8 @@ class Retriever:
 
         if res['is_found']:
             return {
-                'path': res['path'],
                 'method_name': res['path'].split('/')[-1],
+                'path': res['path'],
             }
         else:
             return None

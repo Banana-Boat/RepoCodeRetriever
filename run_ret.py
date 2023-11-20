@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import sys
 from typing import Tuple
 from dotenv import load_dotenv
 
@@ -73,6 +72,7 @@ if __name__ == "__main__":
         "Client for OpenAI was created successfully.")
 
     # retrieve method according to the description
+    pipeline_logger.info("Start retrieval...")
     retriever = Retriever(ret_logger, openai_client)
     with open(sum_out_path, "r") as f_sum_out:
         repo_sum_obj = json.loads(f_sum_out.read())
