@@ -41,7 +41,7 @@ public class JavaRepoParser {
         );
     }
 
-    public JDirectory extractDirectory(File dir, String pkgName) throws Exception {
+    public JDirectory extractDirectory(File dir, String dirName) throws Exception {
         if (!dir.isDirectory())
             throw new IllegalArgumentException("param is not a directory");
 
@@ -51,11 +51,15 @@ public class JavaRepoParser {
         File[] subFiles = Objects.requireNonNull(dir.listFiles());
 //        // process current directory with only one subdirectory, concat directory name, only generate one node.
 //        if (subFiles.length == 1 && subFiles[0].isDirectory()) {
-//            return extractDirectory(subFiles[0], pkgName + "/" + subFiles[0].getName());
+//            return extractDirectory(subFiles[0], dirName + "/" + subFiles[0].getName());
 //        }
 
         for (File file : subFiles) {
             if (file.isDirectory()) {
+                // if directory name contains test, skip it
+                if (file.getName().toLowerCase().contains("test"))
+                    continue;
+
                 JDirectory jDirectory = extractDirectory(file, file.getName());
                 if (jDirectory != null)
                     subJDirectories.add(jDirectory);
@@ -74,7 +78,7 @@ public class JavaRepoParser {
         dirCount++;
         return new JDirectory(
                 nodeCount,
-                pkgName,
+                dirName,
                 dir.getPath(),
                 jFiles,
                 subJDirectories

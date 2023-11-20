@@ -341,7 +341,7 @@ class Retriever:
     def retrieve_in_repo(self, des: str, repo_sum_obj: dict) -> dict:
         '''
             Retrieve the method according to the description and the summary of the entire repo.
-            return {path: str, method_name} | None.
+            return {is_found: bool, path: str, method_name: str}.
         '''
         start_time = time.time()
 
@@ -354,8 +354,13 @@ class Retriever:
 
         if res['is_found']:
             return {
+                'is_found': True,
                 'method_name': res['path'].split('/')[-1],
                 'path': res['path'],
             }
         else:
-            return None
+            return {
+                'is_found': False,
+                'method_name': "",
+                'path': "",
+            }
