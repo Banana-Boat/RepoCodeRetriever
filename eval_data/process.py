@@ -8,6 +8,11 @@ from tqdm import tqdm
 import requests
 
 
+def parse_repo(repo_path, output_path, log_path) -> int:
+    return os.system(
+        f"java -jar ../java-repo-parser.jar -r={repo_path} -o={output_path} -l={log_path}")
+
+
 def filter_data1(raw_dir_path, output_file_path):
     res = []
     filtered_repo_data = []  # list contains filtered data in one repo
@@ -25,13 +30,28 @@ def filter_data1(raw_dir_path, output_file_path):
                 raw_data_count += 1
                 obj = json.loads(line)
 
-                # exclude repos not open source this time
-                if obj['repo'] == 'streamsets/datacollector':
+                # exclude repos
+                if obj['repo'] == 'streamsets/datacollector' or \
+                        obj['repo'] == 'DataSketches/sketches-core' or \
+                        obj['repo'] == 'xiancloud/xian' or \
+                        obj['repo'] == 'apache/incubator-gobblin' or \
+                        obj['repo'] == 'box/box-java-sdk' or \
+                        obj['repo'] == 'alibaba/jstorm' or \
+                        obj['repo'] == 'line/armeria' or \
+                        obj['repo'] == 'jenkinsci/jenkins' or \
+                        obj['repo'] == 'aws/aws-sdk-java' or \
+                        obj['repo'] == 'Whiley/WhileyCompilerCollection' or \
+                        obj['repo'] == 'javalite/activejdbc' or \
+                        obj['repo'] == 'apache/incubator-zipkin' or \
+                        obj['repo'] == 'banq/jdonframework' or \
+                        obj['repo'] == 'sshtools/j2ssh-maverick' or \
+                        obj['repo'] == 'BranchMetrics/android-branch-deep-linking' or \
+                        obj['repo'] == 'graknlabs/grakn':
                     continue
 
                 if obj['repo'] + obj['sha'] != cur_repo:
                     # limitation for data count in one repo
-                    if len(filtered_repo_data) >= 50:
+                    if len(filtered_repo_data) >= 40:
                         res.extend(filtered_repo_data)
                         repo_set.add(cur_repo)
 
@@ -44,7 +64,7 @@ def filter_data1(raw_dir_path, output_file_path):
                     continue
 
                 # limitation for directory hierarchy in path field
-                if obj['path'].count('/') < 3 or obj['path'].count('/') > 10:
+                if obj['path'].count('/') < 3 or obj['path'].count('/') > 7:
                     continue
 
                 # limitation for query's token count in docstring_tokens field
@@ -77,7 +97,7 @@ def filter_data1(raw_dir_path, output_file_path):
                 query = query.strip()
 
                 # ignore query which is too short or too long
-                if len(query) < 50 or len(query) > 150:
+                if len(query) < 30 or len(query) > 150:
                     continue
 
                 # ignore duplicate query in one repo
@@ -124,23 +144,30 @@ def get_repo_info_by_api(repo_name: str):
     return None
 
 
-def get_repo_infos(data_file_path: str, output_file_path: str, start_idx=0):
+def get_repo_infos(data_file_path, repo_file_path, start_idx=0):
     repo_set = set()
+    repo_info_list = []
 
-    with open(data_file_path, 'r') as f_jsonl, open(output_file_path, 'a') as f_out:
+    with open(repo_file_path, 'r') as f_repo:
+        repo_info_list = [json.loads(line) for line in f_repo]
+
+    with open(data_file_path, 'r') as f_jsonl, open(repo_file_path, 'a') as f_out:
         repo_objs = [json.loads(line) for line in f_jsonl]
         for idx, repo_obj in enumerate(tqdm(repo_objs[start_idx:])):
             if repo_obj['repo'] in repo_set:
                 continue
             repo_set.add(repo_obj['repo'])
 
-            repo_info = get_repo_info_by_api(repo_obj['repo'])
-            if repo_info is None:
-                print(f'Stop at {idx + start_idx}')
-                return
+            # check if repo info is already in repo_info_list
+            repo_info_obj = next(
+                filter(lambda x: x['full_name'] == repo_obj['repo'], repo_info_list), None)
+            if repo_info_obj is None:
+                repo_info = get_repo_info_by_api(repo_obj['repo'])
+                if repo_info is None:
+                    print(f'Stop at {idx + start_idx}')
+                    return
 
-            json.dump(repo_info, f_out)
-            f_out.write('\n')
+                f_out.write(json.dumps(repo_info) + '\n')
 
 
 def filter_repo1(data_file_path, repo_file_path, output_file_path):
@@ -170,8 +197,8 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
                 continue
 
             # limitation for size
-            if repo_info['size'] > 10000:
-                continue
+            # if repo_info['size'] > 100000:
+            #     continue
 
             # cancat zip url
             # https://github.com/soimort/you-get/blob/b746ac01c9f39de94cac2d56f665285b0523b974/src/you_get/extractors/youtube.py#L135-L143
@@ -197,6 +224,53 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
             out_f.write('\n')
 
 
+def filter_repo2(repo_file_path, repo_root_path, output_file_path):
+    repos = []
+    temp_dir_path = './parse_temp'
+    temp_file_list = os.listdir(temp_dir_path)
+
+    with open(repo_file_path, 'r') as f_repo:
+        repo_objs = [json.loads(line) for line in f_repo]
+
+        for repo_obj in tqdm(repo_objs):
+            repo_dir_name = f"{repo_obj['repo'].split('/')[-1]}-{repo_obj['sha']}"
+            repo_dir_path = os.path.join(repo_root_path, repo_dir_name)
+
+            parse_log_path = os.path.join(
+                temp_dir_path, f"parse_log_{repo_dir_name}.txt")
+            parse_out_path = os.path.join(
+                temp_dir_path, f"parse_out_{repo_dir_name}.json")
+
+            # if repo is already parsed, skip it
+            if f"parse_out_{repo_dir_name}.json" not in temp_file_list:
+                if (0 != parse_repo(repo_dir_path, parse_out_path, parse_log_path)):
+                    print("Failed to parse repo.")
+                    return
+
+            with open(parse_out_path, 'r') as f_parse_out:
+                try:
+                    parse_obj = json.loads(f_parse_out.read())
+                except Exception as e:
+                    print(f'Error: {repo_dir_name}')
+                    print(e)
+                    return
+                node_count = parse_obj['nodeCount']
+                # print(
+                #     f"Repo: {repo_obj['repo']}, Node count: {node_count}")
+
+                if node_count > 2000:
+                    continue
+
+                repos.append(repo_obj)
+
+    print(f'Filtered repo count: {len(repos)}')
+
+    with open(output_file_path, 'w') as out_f:
+        for obj in repos:
+            json.dump(obj, out_f)
+            out_f.write('\n')
+
+
 def filter_data2(repo_file_path, data_file_path, output_file_path):
     res = []
     repo_set = set()
@@ -213,7 +287,7 @@ def filter_data2(repo_file_path, data_file_path, output_file_path):
             if obj['repo'] not in repo_set:
                 continue
 
-            obj['idx'] = idx
+            obj['id'] = idx
             idx += 1
             res.append(obj)
 
@@ -261,14 +335,17 @@ if __name__ == "__main__":
     data1_file_path = os.path.join(filtered_dir_path, 'data1.jsonl')
     repo_info_file_path = os.path.join(filtered_dir_path, 'repo_info.jsonl')
     repo1_file_path = os.path.join(filtered_dir_path, 'repo1.jsonl')
+    repo2_file_path = os.path.join(filtered_dir_path, 'repo2.jsonl')
     data2_file_path = os.path.join(filtered_dir_path, 'data2.jsonl')
 
-    # filter_data1(raw_dir_path, data1_file_path)
+    filter_data1(raw_dir_path, data1_file_path)
 
     # get_repo_infos(data1_file_path, repo_info_file_path, 0)
 
-    # filter_repo1(data1_file_path, repo_info_file_path, repo1_file_path)
+    filter_repo1(data1_file_path, repo_info_file_path, repo1_file_path)
 
-    # filter_data2(repo1_file_path, data1_file_path, data2_file_path)
+    # download_repos(repo1_file_path, repo_dir_path, 0)
 
-    download_repos(repo1_file_path, repo_dir_path, 0)
+    filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
+
+    filter_data2(repo2_file_path, data1_file_path, data2_file_path)

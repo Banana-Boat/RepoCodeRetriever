@@ -1,7 +1,9 @@
 eval_data/filtered
 eval_data/repo
 eval_data/raw
-eval_data/result
+eval_data/sum_result
+eval_data/ret_log
+eval_data/parse_temp
 
 java-repo-parser/target/
 java-repo-parser/repo/

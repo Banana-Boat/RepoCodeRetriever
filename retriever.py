@@ -19,6 +19,9 @@ class Retriever:
 
         self.token_used_count = 0
 
+        self.most_probable_path = []  # most probable path, reset every retrieval
+        self.ret_times = 0  # retrieval times, reset every retrieval
+
     def _is_legal_input_text(self, system_input_text: str, user_input_text: str) -> bool:
         '''
             Check if the input text length exceeds the model limit.
@@ -35,6 +38,7 @@ class Retriever:
             If an error occurred during generation, return None.
         '''
         try:
+            self.ret_times += 1
             total_tokens, output_text = self.openai_client.generate(
                 RET_METHOD_SYSTEM_PROMPT, user_input_text, RET_MAX_OUTPUT_LENGTH)
             self.token_used_count += total_tokens
@@ -72,6 +76,7 @@ class Retriever:
             If an error occurred during generation, return None.
         '''
         try:
+            self.ret_times += 1
             total_tokens, output_text = self.openai_client.generate(
                 RET_SCOPE_SYSTEM_PROMPT, user_input_text, RET_MAX_OUTPUT_LENGTH)
             self.token_used_count += total_tokens
@@ -219,7 +224,7 @@ class Retriever:
             }
 
         # try ids in turn
-        for infer_id in infer_obj['ids'][:RET_SCOPE_MAX_BACKTRACK_COUNT]:
+        for idx, infer_id in enumerate(infer_obj['ids'][:RET_SCOPE_MAX_BACKTRACK_COUNT]):
             cls_sum_obj = next(
                 filter(lambda x: x['id'] == infer_id, file_sum_obj['classes']), None)
             if cls_sum_obj is None:
@@ -229,6 +234,10 @@ class Retriever:
                     'is_found': False,
                     'is_error': True,
                 }
+
+            if idx == 0:
+                # add to most probable path if it is the first try
+                self.most_probable_path.append(cls_sum_obj['name'])
 
             path.append(cls_sum_obj['name'])
             res = self._retrieve_in_cls(des, cls_sum_obj, path)
@@ -304,7 +313,7 @@ class Retriever:
             }
 
         # try ids in turn
-        for infer_id in infer_obj['ids'][:RET_SCOPE_MAX_BACKTRACK_COUNT]:
+        for idx, infer_id in enumerate(infer_obj['ids'][:RET_SCOPE_MAX_BACKTRACK_COUNT]):
             file_sum_obj = None
             sub_dir_sum_obj = None
             res = None
@@ -324,10 +333,18 @@ class Retriever:
                     'is_error': True,
                 }
             elif file_sum_obj is not None:
+                if idx == 0:
+                    # add to most probable path if it is the first try
+                    self.most_probable_path.append(file_sum_obj['name'])
+
                 path.append(file_sum_obj['name'])
                 res = self._retrieve_in_file(
                     des, file_sum_obj, path)
             elif sub_dir_sum_obj is not None:
+                if idx == 0:
+                    # add to most probable path if it is the first try
+                    self.most_probable_path.append(sub_dir_sum_obj['name'])
+
                 path.append(sub_dir_sum_obj['name'])
                 res = self._retrieve_in_dir(
                     des, sub_dir_sum_obj, path)
@@ -343,9 +360,13 @@ class Retriever:
     def retrieve_in_repo(self, des: str, repo_sum_obj: dict) -> dict:
         '''
             Retrieve the method according to the description and the summary of the entire repo.
-            return {is_found: bool, path: List[str]}.
+            return {is_found: bool, is_error: bool, path: List[str], ret_times: int}.
+            If is_found is False, path is the search path of the most probability.
         '''
         start_time = time.time()
+
+        self.most_probable_path = []  # reset most probable path
+        self.ret_times = 0
 
         res = self._retrieve_in_dir(des, repo_sum_obj, [repo_sum_obj['name']])
 
@@ -354,7 +375,8 @@ class Retriever:
         self.logger.info(
             f"Retrieval time cost: {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
 
+        res['ret_times'] = self.ret_times
         if not res['is_found']:
-            res['path'] = []
+            res['path'] = self.most_probable_path
 
         return res

@@ -22,23 +22,24 @@ SUM_METHOD = {
 }
 
 
-RET_MAX_OUTPUT_LENGTH = 200
+RET_MAX_OUTPUT_LENGTH = 500
 
 # prompt of different hierarchies during retrieval
 # directory / file / class
-RET_SCOPE_MAX_BACKTRACK_COUNT = 3
+RET_SCOPE_MAX_BACKTRACK_COUNT = 2
 RET_SCOPE_SYSTEM_PROMPT = '''You will be provided with a description of a Java method in a Java code repository, as well as a information list of directories or files or Java classes in this repository in JSON format as follows:
 {"id": <PLACEHOLDER>, "name": <PLACEHOLDER>, "summary": <PLACEHOLDER>}
 A directory contains files and subdirectories, a file contains Java classes, and a Java class contains methods.
+A directory or a file or a Java class is called a node, the id field uniquely identifies a node.
 You need to follow the steps below:
-- Step 1: Calculate the probability that these directories or files or Java classes contain this method directly or indirectly.
-- Step 2: Sort them from high to low according to the probability, return the option ID list.
+- Step 1: Calculate the probability that these nodes contain this method directly or indirectly.
+- Step 2: Sort these nodes from high to low according to the probability, return the list of node's id.
 - Step 3: Give a reason of about 50 words.
 You need to give a JSON object that can be parsed directly as follows:
 {"ids": [<PLACEHOLDER>...], "reason": <PLACEHOLDER>}'''
 # method
 RET_METHOD_SYSTEM_PROMPT = '''You will be provided with a description of a Java method in a Java code repository, as well as a information list of methods in this code repository in JSON format as follows:
 {"id": <PLACEHOLDER>, "name": <PLACEHOLDER>, "signature": <PLACEHOLDER>, "summary": <PLACEHOLDER>}
-You need to infer whether the method provided with the description is one of these methods. If so, answer the ID of the method. Otherwise, the answer ID is -1. Regardless of whether it is found or not, give a reason of about 30 words.
+You need to infer whether the method provided with the description is one of these methods. If so, answer the id of the method. Otherwise, the answer id is -1. Regardless of whether it is found or not, give a reason of about 30 words.
 You need to give a JSON object that can be parsed directly as follows:
 {"id": <PLACEHOLDER>, "reason": <PLACEHOLDER>}'''

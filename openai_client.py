@@ -46,10 +46,10 @@ class OpenAIClient:
         '''
         error_msg = ""
 
-        for _ in range(5):  # retry 5 times at most when a error occurred
+        for _ in range(3):  # retry 3 times at most when a error occurred
             try:
                 res = requests.post("https://api.openai.com/v1/chat/completions",
-                                    timeout=10,
+                                    timeout=20,
                                     headers={
                                         "Authorization": f"Bearer {self.token}",
                                         "Content-Type": "application/json"
@@ -72,16 +72,14 @@ class OpenAIClient:
                                     })
 
                 if res.status_code != 200:
-                    error_msg = f"OpenAI API error code: {res.status_code}\n{res.json()}"
-                    # wait random time to reduce pressure on server
-                    sleep(random.randint(15, 25))
-                    continue
+                    raise Exception(
+                        f"OpenAI API error code: {res.status_code}\n{res.json()}")
 
                 return res.json()['usage']['total_tokens'], res.json()['choices'][0]['message']['content']
             except Exception as e:
                 error_msg = e
                 # wait random time to reduce pressure on server
-                sleep(random.randint(15, 25))
+                sleep(random.randint(5, 15))
                 continue
 
         raise Exception(error_msg)

@@ -1,29 +1,35 @@
 import json
+import logging
 import os
 import sys
 from dotenv import load_dotenv
 from ie_client import IEClient
-from run_sum import create_loggers, parse_repo
+from run_sum import parse_repo
 from summarizer import Summarizer
 
 
 if __name__ == "__main__":
-    start_idx = sys.argv[1] if len(sys.argv) > 1 else 0
+    start_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
     repo_root_path = "./eval_data/repo"
     repo_list_file_path = "./eval_data/filtered/repo2.jsonl"
-    result_root_path = "./eval_data/result"
+    result_root_path = "./eval_data/sum_result"
 
     load_dotenv()  # load environment variables from .env file
+
+    logging.basicConfig(level=logging.INFO,
+                        format='%(name)s - %(asctime)s - %(levelname)s - %(message)s',
+                        datefmt='%m/%d/%Y %H:%M:%S')
+    pipeline_logger = logging.getLogger("pipeline")
 
     # create client for Inference Endpoints
     try:
         ie_client = IEClient()
     except Exception as e:
-        print(e)
+        pipeline_logger.error(e)
         exit(1)
     if not ie_client.check_health():
-        print("Inference Endpoints is not available.")
+        pipeline_logger.error("Inference Endpoints is not available.")
         exit(1)
 
     with open(repo_list_file_path, "r") as f_repo_list:
@@ -50,9 +56,14 @@ if __name__ == "__main__":
                     result_dir_path, f"sum_out_{repo_name}.json")
 
                 # create logger
-                _, sum_logger = create_loggers(sum_log_path)
+                sum_logger = logging.getLogger(sum_log_path)
+                sum_logger.addHandler(
+                    logging.FileHandler(sum_log_path, "w", "utf-8")
+                )
+                sum_logger.propagate = False  # prevent printing to console
 
-                print(f"Summarizing {idx + start_idx}th repo: {repo_name}...")
+                pipeline_logger.info(
+                    f"Summarizing {idx + start_idx}th repo: {repo_name}...")
 
                 # check if existence of path
                 if not os.path.exists(repo_path):
@@ -73,9 +84,12 @@ if __name__ == "__main__":
                     with open(sum_out_path, "w") as f_sum_out:
                         f_sum_out.write(json.dumps(result))
 
-                print(f"Summarized {idx + start_idx}th repo: {repo_name}")
+                pipeline_logger.info(
+                    f"Finished summarizing {idx + start_idx}th repo: {repo_name}")
 
             except Exception as e:
-                print(e)
-                print(f'Stop at {idx + start_idx}')
+                pipeline_logger.error(e)
+                pipeline_logger.warning(f'Stop at {idx + start_idx}')
                 break
+
+    logging.shutdown()
