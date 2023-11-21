@@ -5,7 +5,7 @@ import time
 from typing import List
 
 import tiktoken
-from constants import INPUT_SEPARATOR, LOG_SEPARATOR, RET_MAX_OUTPUT_LENGTH, RET_METHOD_SYSTEM_PROMPT, RET_SCOPE_MAX_TRY_NUM, RET_SCOPE_SYSTEM_PROMPT
+from constants import INPUT_SEPARATOR, LOG_SEPARATOR, RET_MAX_OUTPUT_LENGTH, RET_METHOD_SYSTEM_PROMPT, RET_SCOPE_MAX_BACKTRACK_COUNT, RET_SCOPE_SYSTEM_PROMPT
 
 from openai_client import OpenAIClient
 
@@ -103,10 +103,10 @@ class Retriever:
                 f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nAn Error occurred during generation API call:\n{e}")
             return None
 
-    def _retrieve_in_cls(self, des: str, cls_sum_obj: dict, path: str) -> dict:
+    def _retrieve_in_cls(self, des: str, cls_sum_obj: dict, path: List[str]) -> dict:
         '''
             Retrieve the method according to the description and the summary of the class.
-            return {is_found: bool, need_backtrack: bool, path: str | None}, path is str only when is_found is True.
+            return {is_found: bool, is_error: bool, path: List[str] | None}, path is list when is_found is True.
         '''
         user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
 
@@ -116,7 +116,7 @@ class Retriever:
                 f"INSUFFICIENT CONTEXT{LOG_SEPARATOR}\nNode ID: {cls_sum_obj['id']}\nNo method in this class.")
             return {
                 'is_found': False,
-                'need_backtrack': True,
+                'is_error': False,
             }
 
         # concat summary of methods to context
@@ -133,7 +133,7 @@ class Retriever:
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {cls_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
                     'is_found': False,
-                    'need_backtrack': False,
+                    'is_error': True,
                 }
 
             user_input_text += temp_str
@@ -145,14 +145,14 @@ class Retriever:
         if infer_obj == None:
             return {
                 'is_found': False,
-                'need_backtrack': False,
+                'is_error': True,
             }
 
         # no method was selected in this class
         if infer_obj['id'] == -1:
             return {
                 'is_found': False,
-                'need_backtrack': True,
+                'is_error': False,
             }
 
         # get method_sum_obj according to infer_obj['id']
@@ -163,20 +163,21 @@ class Retriever:
                 f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {cls_sum_obj['id']}\nThe method is not found in this class.")
             return {
                 'is_found': False,
-                'need_backtrack': False,
+                'is_error': True,
             }
 
         # return the result of retrieval
+        path.append(method_sum_obj['name'])
         return {
             'is_found': True,
-            'need_backtrack': False,
-            'path': f"{path}.{method_sum_obj['name']}",
+            'is_error': False,
+            'path': path,
         }
 
-    def _retrieve_in_file(self, des: str, file_sum_obj: dict, path: str) -> dict:
+    def _retrieve_in_file(self, des: str, file_sum_obj: dict, path: List[str]) -> dict:
         '''
             Retrieve the method according to the description and the summary of the file.
-            return {is_found: bool, need_backtrack: bool, path: str | None}, path is str only when is_found is True.
+            return {is_found: bool, is_error: bool, path: List[str] | None}, path is list only when is_found is True.
         '''
         user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
 
@@ -186,7 +187,7 @@ class Retriever:
                 f"INSUFFICIENT CONTEXT{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nNo class in this file.")
             return {
                 'is_found': False,
-                'need_backtrack': True,
+                'is_error': False,
             }
 
         # concat summary of classes to context
@@ -203,7 +204,7 @@ class Retriever:
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
                     'is_found': False,
-                    'need_backtrack': False,
+                    'is_error': True,
                 }
 
             user_input_text += temp_str
@@ -215,11 +216,11 @@ class Retriever:
         if infer_obj == None:
             return {
                 'is_found': False,
-                'need_backtrack': False,
+                'is_error': True,
             }
 
         # try ids in turn
-        for infer_id in infer_obj['ids'][:RET_SCOPE_MAX_TRY_NUM]:
+        for infer_id in infer_obj['ids'][:RET_SCOPE_MAX_BACKTRACK_COUNT]:
             cls_sum_obj = next(
                 filter(lambda x: x['id'] == infer_id, file_sum_obj['classes']), None)
             if cls_sum_obj is None:
@@ -227,24 +228,24 @@ class Retriever:
                     f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nThe class is not found in this file.")
                 return {
                     'is_found': False,
-                    'need_backtrack': False,
+                    'is_error': True,
                 }
 
-            res = self._retrieve_in_cls(
-                des, cls_sum_obj, f"{path}/{cls_sum_obj['name']}")
+            path.append(cls_sum_obj['name'])
+            res = self._retrieve_in_cls(des, cls_sum_obj, path)
 
-            if res['is_found'] or not res['need_backtrack']:
+            if res['is_found'] or res['is_error']:
                 return res
 
         return {
             'is_found': False,
-            'need_backtrack': True,
+            'is_error': False,
         }
 
-    def _retrieve_in_dir(self, des: str, dir_sum_obj: dict, path: str) -> dict:
+    def _retrieve_in_dir(self, des: str, dir_sum_obj: dict, path: List[str]) -> dict:
         '''
             Retrieve the method according to the description and the summary of the directory.
-            return {is_found: bool, need_backtrack: bool, path: str | None}, path is str only when is_found is True.
+            return {is_found: bool, is_error: bool, path: List[str] | None}, path is list only when is_found is True.
         '''
         user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
 
@@ -254,7 +255,7 @@ class Retriever:
                 f"INSUFFICIENT CONTEXT{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nNo file and subdirectory in this directory.")
             return {
                 'is_found': False,
-                'need_backtrack': True,
+                'is_error': False,
             }
 
         # concat summary of subdirectories to context
@@ -270,7 +271,7 @@ class Retriever:
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
                     'is_found': False,
-                    'need_backtrack': False,
+                    'is_error': True,
                 }
 
             user_input_text += temp_str
@@ -288,7 +289,7 @@ class Retriever:
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
                     'is_found': False,
-                    'need_backtrack': False,
+                    'is_error': True,
                 }
 
             user_input_text += temp_str
@@ -300,11 +301,11 @@ class Retriever:
         if infer_obj == None:
             return {
                 'is_found': False,
-                'need_backtrack': False,
+                'is_error': True,
             }
 
         # try ids in turn
-        for infer_id in infer_obj['ids'][:RET_SCOPE_MAX_TRY_NUM]:
+        for infer_id in infer_obj['ids'][:RET_SCOPE_MAX_BACKTRACK_COUNT]:
             file_sum_obj = None
             sub_dir_sum_obj = None
             res = None
@@ -321,46 +322,40 @@ class Retriever:
                     f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nThe file or subdirectory is not found in this directory.")
                 return {
                     'is_found': False,
-                    'need_backtrack': False,
+                    'is_error': True,
                 }
             elif file_sum_obj is not None:
+                path.append(file_sum_obj['name'])
                 res = self._retrieve_in_file(
-                    des, file_sum_obj, f"{path}/{file_sum_obj['name']}")
+                    des, file_sum_obj, path)
             elif sub_dir_sum_obj is not None:
+                path.append(sub_dir_sum_obj['name'])
                 res = self._retrieve_in_dir(
-                    des, sub_dir_sum_obj, f"{path}/{sub_dir_sum_obj['name']}")
+                    des, sub_dir_sum_obj, path)
 
-            if res['is_found'] or not res['need_backtrack']:
+            if res['is_found'] or res['is_error']:
                 return res
 
         return {
             'is_found': False,
-            'need_backtrack': True,
+            'is_error': False,
         }
 
     def retrieve_in_repo(self, des: str, repo_sum_obj: dict) -> dict:
         '''
             Retrieve the method according to the description and the summary of the entire repo.
-            return {is_found: bool, path: str, method_name: str}.
+            return {is_found: bool, path: List[str]}.
         '''
         start_time = time.time()
 
-        res = self._retrieve_in_dir(des, repo_sum_obj, repo_sum_obj['name'])
+        res = self._retrieve_in_dir(des, repo_sum_obj, [repo_sum_obj['name']])
 
         self.logger.info(f"COMPLETION{LOG_SEPARATOR}")
         self.logger.info(f"Token Used: {self.token_used_count}")
         self.logger.info(
             f"Retrieval time cost: {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
 
-        if res['is_found']:
-            return {
-                'is_found': True,
-                'method_name': res['path'].split('/')[-1],
-                'path': res['path'],
-            }
-        else:
-            return {
-                'is_found': False,
-                'method_name': "",
-                'path': "",
-            }
+        if not res['is_found']:
+            res['path'] = []
+
+        return res

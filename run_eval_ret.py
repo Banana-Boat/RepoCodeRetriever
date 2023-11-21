@@ -26,9 +26,9 @@ if __name__ == "__main__":
         print(e)
         exit(1)
     # check if enough credits
-    if openai_client.get_credit_grants() < 2.0:
-        print("Not enough credits to retrieval.")
-        exit(1)
+    # if openai_client.get_credit_grants() < 2.0:
+    #     print("Not enough credits to retrieval.")
+    #     exit(1)
 
     with open(data_file_path, "r") as f_data, open(result_file_path, "a") as f_result:
         data_objs = [json.loads(line) for line in f_data.readlines()]

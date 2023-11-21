@@ -26,7 +26,7 @@ RET_MAX_OUTPUT_LENGTH = 200
 
 # prompt of different hierarchies during retrieval
 # directory / file / class
-RET_SCOPE_MAX_TRY_NUM = 3
+RET_SCOPE_MAX_BACKTRACK_COUNT = 2
 RET_SCOPE_SYSTEM_PROMPT = '''You will be provided with a description of a Java method in a Java code repository, as well as a information list of directories or files or Java classes/interfaces/enums in this repository in JSON format as follows:
 {"id": <PLACEHOLDER>, "name": <PLACEHOLDER>, "summary": <PLACEHOLDER>}
 A directory contains files and subdirectories, a file contains Java classes/interfaces/enums, and a Java class/interface/enum contains methods.

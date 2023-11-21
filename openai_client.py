@@ -96,22 +96,19 @@ if __name__ == '__main__':
         print(e)
         exit(1)
 
-    if openai_client.get_credit_grants() < 2.0:
-        print("Not enough credits to retrieval.")
-        exit(1)
-
     system_input_text = '''You will be provided with a description of a Java method in a Java code repository, as well as a information list of directories or files or Java classes/interfaces/enums in this repository in JSON format as follows:
 {"id": <PLACEHOLDER>, "name": <PLACEHOLDER>, "summary": <PLACEHOLDER>}
 A directory contains files and subdirectories, a file contains Java classes/interfaces/enums, and a Java class/interface/enum contains methods.
-- Step 1: You need to calculate the probability that these directories or files or Java classes/interfaces/enums contain this method directly or indirectly.
+You need to follow the steps below:
+- Step 1: Calculate the probability that these directories or files or Java classes/interfaces/enums contain this method directly or indirectly.
 NOTICE: If a directory or file contains interfaces or enums but no class, the probability should be the lowest.
 - Step 2: Sort them from high to low according to the probability, return the option ID list.
 - Step 3: Give a reason of about 50 words.
-The answer in JSON format is as follows:
+You need to give a JSON object that can be parsed directly as follows:
 {"ids": [<PLACEHOLDER>...], "reason": <PLACEHOLDER>}
 '''
 
-    user_input_text = '''Method Description: Returns true if there is at least one message to read in the pipe.
+    user_input_text = '''Method Description: Removes an element from the front end of the queue.
 ##################################################################
 Information List:
 {'id': 8, 'name': 'YPipeBase.java', 'summary': '  The file `YPipeBase.java` contains an interface named `YPipeBase` that provides methods for writing, reading, and flushing data through a pipe. The interface defines methods for writing data to the pipe, undoing the last write, flushing the pipe, checking if there is data available to read, reading data from the pipe, and probing the pipe.'}

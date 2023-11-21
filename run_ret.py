@@ -7,15 +7,6 @@ from dotenv import load_dotenv
 from openai_client import OpenAIClient
 from retriever import Retriever
 
-"""
-{"repo": "zeromq/jeromq", "query": "bind, is available and compatible with the socket type.", "func_name": "SocketBase.checkProtocol", "path": "src/main/java/zmq/SocketBase.java"}
-{"repo": "zeromq/jeromq", "query": "Creates a Selector that will be closed when the context is destroyed.", "func_name": "Ctx.createSelector", "path": "src/main/java/zmq/Ctx.java"}
-{"repo": "zeromq/jeromq", "query": "Polling on items with given selector CAUTION: This could be affected by jdk epoll bug", "func_name": "ZMQ.poll", "path": "src/main/java/zmq/ZMQ.java"}
-{"repo": "zeromq/jeromq", "query": "Returns true if there is at least one message to read in the pipe.", "func_name": "Pipe.checkRead", "path": "src/main/java/zmq/pipe/Pipe.java"}
-{"repo": "zeromq/jeromq", "query": "Cancel the timer created by sink_ object with ID equal to id_.", "func_name": "PollerBase.cancelTimer", "path": "src/main/java/zmq/poll/PollerBase.java"}
-{"repo": "zeromq/jeromq", "query": "Removes an element from the front end of the queue.", "func_name": "YQueue.pop", "path": "src/main/java/zmq/pipe/YQueue.java"}
- """
-
 
 def create_loggers(ret_log_path: str) -> Tuple[logging.Logger, logging.Logger]:
     '''
@@ -39,8 +30,17 @@ def create_loggers(ret_log_path: str) -> Tuple[logging.Logger, logging.Logger]:
 if __name__ == "__main__":
     load_dotenv()  # load environment variables from .env file
 
+    """
+    {"repo": "zeromq/jeromq", "query": "bind, is available and compatible with the socket type.", "func_name": "SocketBase.checkProtocol", "path": "src/main/java/zmq/SocketBase.java"}
+    {"repo": "zeromq/jeromq", "query": "Creates a Selector that will be closed when the context is destroyed.", "func_name": "Ctx.createSelector", "path": "src/main/java/zmq/Ctx.java"}
+    {"repo": "zeromq/jeromq", "query": "Polling on items with given selector CAUTION: This could be affected by jdk epoll bug", "func_name": "ZMQ.poll", "path": "src/main/java/zmq/ZMQ.java"}
+    {"repo": "zeromq/jeromq", "query": "Returns true if there is at least one message to read in the pipe.", "func_name": "Pipe.checkRead", "path": "src/main/java/zmq/pipe/Pipe.java"}
+    {"repo": "zeromq/jeromq", "query": "Cancel the timer created by sink_ object with ID equal to id_.", "func_name": "PollerBase.cancelTimer", "path": "src/main/java/zmq/poll/PollerBase.java"}
+    {"repo": "zeromq/jeromq", "query": "Removes an element from the front end of the queue.", "func_name": "YQueue.pop", "path": "src/main/java/zmq/pipe/YQueue.java"}
+    """
+
     repo_name = "jeromq"
-    query = "Removes an element from the front end of the queue."
+    query = "Cancel the timer created by sink_ object with ID equal to id_."
 
     # handle paths
     result_dir_path = "./result"
@@ -65,9 +65,11 @@ if __name__ == "__main__":
         exit(1)
 
     # check if enough credits
-    if openai_client.get_credit_grants() < 2.0:
-        pipeline_logger.error("Not enough credits to retrieval.")
-        exit(1)
+    # credit = openai_client.get_credit_grants()
+    # if credit < 2.0:
+    #     pipeline_logger.error(
+    #         f"Not enough credits to retrieval. Credit: {credit}")
+    #     exit(1)
     pipeline_logger.info(
         "Client for OpenAI was created successfully.")
 

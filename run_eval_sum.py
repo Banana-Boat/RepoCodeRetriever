@@ -1,5 +1,3 @@
-
-
 import json
 import os
 import sys
@@ -28,12 +26,12 @@ if __name__ == "__main__":
         print("Inference Endpoints is not available.")
         exit(1)
 
-    with open(repo_list_file_path, "r") as f:
-        repo_objs = [json.loads(line) for line in f.readlines()]
+    with open(repo_list_file_path, "r") as f_repo_list:
+        repo_objs = [json.loads(line) for line in f_repo_list.readlines()]
 
         for idx, repo_obj in enumerate(repo_objs[start_idx:]):
             try:
-                repo_name = repo_obj['name'].split('/')[-1]
+                repo_name = repo_obj['repo'].split('/')[-1]
                 repo_path = os.path.join(
                     repo_root_path, f"{repo_name}-{repo_obj['sha']}")
 
@@ -54,16 +52,17 @@ if __name__ == "__main__":
                 # create logger
                 _, sum_logger = create_loggers(sum_log_path)
 
+                print(f"Summarizing {idx + start_idx}th repo: {repo_name}...")
+
                 # check if existence of path
                 if not os.path.exists(repo_path):
-                    raise Exception("Repo's path does not exist.")
+                    raise Exception(f"Repo's path does not exist.")
 
                 # parse entire repo using java-repo-parser tool
                 if (0 != parse_repo(repo_path, parse_out_path, parse_log_path)):
                     raise Exception("Failed to parse repo.")
 
                 # build summary tree for entire repo
-                print(f"Summarizing {idx + start_idx}th repo: {repo_name}...")
 
                 summarizer = Summarizer(sum_logger, ie_client)
                 with open(parse_out_path, "r") as f_parse_out:

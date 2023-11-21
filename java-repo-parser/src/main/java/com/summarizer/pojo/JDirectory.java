@@ -12,5 +12,5 @@ public class JDirectory {
   private String name;
   private String path;
   private List<JFile> files;
-  private List<JDirectory> subDirectories;
+  private List<JDirectory> subdirectories;
 }
