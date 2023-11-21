@@ -40,7 +40,7 @@ if __name__ == "__main__":
     """
 
     repo_name = "jeromq"
-    query = "Cancel the timer created by sink_ object with ID equal to id_."
+    query = "Returns true if there is at least one message to read in the pipe."
 
     # handle paths
     result_dir_path = "./result"

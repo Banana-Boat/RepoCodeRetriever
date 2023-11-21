@@ -1,8 +1,6 @@
 import json
-import logging
 import os
 import sys
-from typing import Tuple
 from dotenv import load_dotenv
 
 from openai_client import OpenAIClient

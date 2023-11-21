@@ -12,5 +12,4 @@ public class JClass {
     private String name;
     private String signature;
     private List<JMethod> methods;
-    private String type; // class or interface or enum
 }

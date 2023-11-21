@@ -25,9 +25,13 @@ def filter_data1(raw_dir_path, output_file_path):
                 raw_data_count += 1
                 obj = json.loads(line)
 
+                # exclude repos not open source this time
+                if obj['repo'] == 'streamsets/datacollector':
+                    continue
+
                 if obj['repo'] + obj['sha'] != cur_repo:
                     # limitation for data count in one repo
-                    if len(filtered_repo_data) >= 20:
+                    if len(filtered_repo_data) >= 50:
                         res.extend(filtered_repo_data)
                         repo_set.add(cur_repo)
 
@@ -40,7 +44,7 @@ def filter_data1(raw_dir_path, output_file_path):
                     continue
 
                 # limitation for directory hierarchy in path field
-                if obj['path'].count('/') < 3 or obj['path'].count('/') > 8:
+                if obj['path'].count('/') < 3 or obj['path'].count('/') > 10:
                     continue
 
                 # limitation for query's token count in docstring_tokens field
@@ -73,7 +77,7 @@ def filter_data1(raw_dir_path, output_file_path):
                 query = query.strip()
 
                 # ignore query which is too short or too long
-                if len(query) < 60 or len(query) > 120:
+                if len(query) < 50 or len(query) > 150:
                     continue
 
                 # ignore duplicate query in one repo
@@ -100,52 +104,19 @@ def filter_data1(raw_dir_path, output_file_path):
             out_f.write('\n')
 
 
-def get_repo(input_file_path, output_file_path):
-    repo_set = set()
-    respos = []
-
-    with open(input_file_path, 'r') as input_f:
-        for line in input_f:
-            obj = json.loads(line)
-
-            if obj['repo'] + obj['sha'] in repo_set:
-                continue
-
-            repo_set.add(obj['repo'] + obj['sha'])
-
-            # convert url
-            # https://github.com/soimort/you-get/blob/b746ac01c9f39de94cac2d56f665285b0523b974/src/you_get/extractors/youtube.py#L135-L143
-            # https://github.com/soimort/you-get/archive/b746ac01c9f39de94cac2d56f665285b0523b974.zip
-            url_list = obj['url'].split('/')
-            blob_idx = url_list.index('blob')
-            url_list[blob_idx] = 'archive'
-            zip_url = '/'.join(url_list[:blob_idx + 2]) + '.zip'
-
-            respos.append({
-                'repo': obj['repo'],
-                'sha': obj['sha'],
-                'zip_url': zip_url,
-            })
-
-    with open(output_file_path, 'w') as out_f:
-        for obj in respos:
-            json.dump(obj, out_f)
-            out_f.write('\n')
-
-
-def get_repo_info(repo_name: str):
+def get_repo_info_by_api(repo_name: str):
     for _ in range(2):
         try:
             res = requests.get(
                 f"https://api.github.com/repos/{repo_name}")
 
             if res.status_code != 200:
-                print(res.json())
-                sleep(random.randint(5, 15))
-                continue
+                raise Exception(
+                    f"Status code: {res.status_code}, {res.json()}")
 
             return res.json()
         except Exception as e:
+            print(f'Error: {repo_name}')
             print(e)
             sleep(random.randint(5, 15))
             continue
@@ -153,36 +124,74 @@ def get_repo_info(repo_name: str):
     return None
 
 
-def filter_repo1(repo_file_path, output_file_path, start_idx=0):
-    respos = []
+def get_repo_infos(data_file_path: str, output_file_path: str, start_idx=0):
+    repo_set = set()
 
-    with open(repo_file_path, 'r') as input_f:
-        for i, line in enumerate(tqdm(input_f.readlines()[start_idx:])):
-            repo = json.loads(line)
+    with open(data_file_path, 'r') as f_jsonl, open(output_file_path, 'a') as f_out:
+        repo_objs = [json.loads(line) for line in f_jsonl]
+        for idx, repo_obj in enumerate(tqdm(repo_objs[start_idx:])):
+            if repo_obj['repo'] in repo_set:
+                continue
+            repo_set.add(repo_obj['repo'])
+
+            repo_info = get_repo_info_by_api(repo_obj['repo'])
+            if repo_info is None:
+                print(f'Stop at {idx + start_idx}')
+                return
+
+            json.dump(repo_info, f_out)
+            f_out.write('\n')
+
+
+def filter_repo1(data_file_path, repo_file_path, output_file_path):
+    respos = []
+    repo_set = set()
+
+    with open(data_file_path, 'r') as f_data, open(repo_file_path, 'r') as f_repo_info:
+        datas = [json.loads(line) for line in f_data]
+        repo_infos = [json.loads(line) for line in f_repo_info]
+
+        for data in tqdm(datas):
+            if data['repo'] in repo_set:
+                continue
+            repo_set.add(data['repo'])
 
             # get repo info
-            repo_info = get_repo_info(repo['repo'])
+            repo_info = next(
+                filter(lambda x: x['name'] == data['repo'].split('/')[-1], repo_infos), None)
             if repo_info is None:
-                print(f'Stop at {i + start_idx}')
-                break
+                repo_info = get_repo_info_by_api(data['repo'])
+                if repo_info is None:
+                    print(f'Cannot get repo info: {data["repo"]}')
+                    return
 
             # limitation for star count
-            if repo_info['stargazers_count'] < 100:
+            if repo_info['stargazers_count'] < 50:
                 continue
 
             # limitation for size
             if repo_info['size'] > 10000:
                 continue
 
+            # cancat zip url
+            # https://github.com/soimort/you-get/blob/b746ac01c9f39de94cac2d56f665285b0523b974/src/you_get/extractors/youtube.py#L135-L143
+            # https://github.com/soimort/you-get/archive/b746ac01c9f39de94cac2d56f665285b0523b974.zip
+            url_list = data['url'].split('/')
+            blob_idx = url_list.index('blob')
+            url_list[blob_idx] = 'archive'
+            zip_url = '/'.join(url_list[:blob_idx + 2]) + '.zip'
+
             respos.append({
-                'repo': repo['repo'],
-                'sha': repo['sha'],
-                'zip_url': repo['zip_url'],
+                'repo': data['repo'],
+                'sha': data['sha'],
+                'zip_url': zip_url,
                 'star': repo_info['stargazers_count'],
                 'size': repo_info['size']
             })
 
-    with open(output_file_path, 'a') as out_f:
+    print(f'Filtered repo count: {len(respos)}')
+
+    with open(output_file_path, 'w') as out_f:
         for obj in respos:
             json.dump(obj, out_f)
             out_f.write('\n')
@@ -217,11 +226,17 @@ def filter_data2(repo_file_path, data_file_path, output_file_path):
 
 
 def download_repos(repo_file_path, repo_dir_path, start_idx=0):
-    with open(repo_file_path, 'r') as json_f:
-        repos = json_f.readlines()
+    repo_dir_name_list = os.listdir(repo_dir_path)
 
-        for i, repo in enumerate(tqdm(repos[start_idx:])):
-            repo_obj = json.loads(repo)
+    with open(repo_file_path, 'r') as json_f:
+        repo_objs = [json.loads(line) for line in json_f]
+
+        for i, repo_obj in enumerate(tqdm(repo_objs[start_idx:])):
+            # if repo is already downloaded, skip it
+            repo_dir_name = f"{repo_obj['repo'].split('/')[-1]}-{repo_obj['sha']}"
+            if repo_dir_name in repo_dir_name_list:
+                continue
+
             try:
                 response = requests.get(repo_obj['zip_url'])
                 with open(os.path.join(repo_dir_path, 'temp.zip'), 'wb') as zip_f:
@@ -244,16 +259,16 @@ if __name__ == "__main__":
     filtered_dir_path = os.path.join(os.getcwd(), 'filtered')
 
     data1_file_path = os.path.join(filtered_dir_path, 'data1.jsonl')
+    repo_info_file_path = os.path.join(filtered_dir_path, 'repo_info.jsonl')
     repo1_file_path = os.path.join(filtered_dir_path, 'repo1.jsonl')
-    repo2_file_path = os.path.join(filtered_dir_path, 'repo2.jsonl')
     data2_file_path = os.path.join(filtered_dir_path, 'data2.jsonl')
 
     # filter_data1(raw_dir_path, data1_file_path)
 
-    # get_repo(data1_file_path, repo1_file_path)
+    # get_repo_infos(data1_file_path, repo_info_file_path, 0)
 
-    # filter_repo1(repo1_file_path, repo2_file_path, 0)
+    # filter_repo1(data1_file_path, repo_info_file_path, repo1_file_path)
 
-    filter_data2(repo2_file_path, data1_file_path, data2_file_path)
+    # filter_data2(repo1_file_path, data1_file_path, data2_file_path)
 
-    # download_repos(repo2_file_path, repo_dir_path, 0)
+    download_repos(repo1_file_path, repo_dir_path, 0)

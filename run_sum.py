@@ -1,7 +1,6 @@
 import json
 import logging
 import os
-import sys
 from typing import Tuple
 from dotenv import load_dotenv
 from ie_client import IEClient
@@ -37,7 +36,7 @@ if __name__ == "__main__":
     load_dotenv()  # load environment variables from .env file
 
     # handle paths
-    repo_path = "./result/jeromq"
+    repo_path = "./repo/jeromq"
     repo_name = repo_path.split("/")[-1]
 
     result_dir_path = "./result"

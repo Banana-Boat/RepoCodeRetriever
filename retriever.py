@@ -195,7 +195,6 @@ class Retriever:
             temp_obj = {
                 'id': cls_sum_obj['id'],
                 'name': cls_sum_obj['name'],
-                'type': cls_sum_obj['type'],
                 'summary': cls_sum_obj['summary'],
             }
             temp_str = f"{temp_obj}\n"

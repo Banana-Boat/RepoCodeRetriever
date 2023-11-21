@@ -172,10 +172,10 @@ class Summarizer:
 
     def _summarize_cls(self, cls_obj: dict) -> dict:
         '''
-            Summarize for class/interface/enum according to its methods.
+            Summarize for class according to its methods.
             methods in one class can be processed in batch.
         '''
-        PROMPT = SUM_CLS['prompt'].format(cls_obj['type'])
+        PROMPT = SUM_CLS['prompt']
         MAX_OUTPUT_LENGTH = SUM_CLS['max_output_length']
 
         ignore_method_count = 0
@@ -217,12 +217,11 @@ class Summarizer:
             "name": cls_obj["name"],
             "summary": summary,
             "methods": method_nodes,
-            "type": cls_obj["type"],
         }
 
     def _summarize_file(self, file_obj: dict) -> dict:
         '''
-            Summarize for Java file according to its class / interface / enum.
+            Summarize for Java file according to its class
         '''
         PROMPT = SUM_FILE['prompt']
         MAX_OUTPUT_LENGTH = SUM_FILE['max_output_length']
@@ -233,20 +232,20 @@ class Summarizer:
         input_text = ""
         context = f"File name: {file_obj['name']}.\n"
 
-        # handle all classes/interfaces/enums
+        # handle all classes
         cls_nodes = []
         for cls_obj in file_obj["classes"]:
             cls_nodes.append(self._summarize_cls(cls_obj))
 
         # concat summary of classes to context
         if len(cls_nodes) > 0:
-            context += "The following is the class or interface or enum in the file and the corresponding summary:\n"
+            context += "The following is the classes in the file and the corresponding summary:\n"
 
             for idx, cls_node in enumerate(cls_nodes):
                 if cls_node['summary'] == NO_SUMMARY:
                     continue
 
-                tmp_str = f"- The summary of Java {cls_node['type']} named {cls_node['name']}: {cls_node['summary']}\n"
+                tmp_str = f"- The summary of Java class named {cls_node['name']}: {cls_node['summary']}\n"
 
                 if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                     ignore_cls_count = len(cls_nodes) - idx

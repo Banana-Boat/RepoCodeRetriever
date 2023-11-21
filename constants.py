@@ -13,7 +13,7 @@ SUM_FILE = {
     "max_output_length": 100,
 }
 SUM_CLS = {
-    "prompt": "Summarize the Java {} below in about 50 words, don't include examples and details.",
+    "prompt": "Summarize the Java class below in about 50 words, don't include examples and details.",
     "max_output_length": 100,
 }
 SUM_METHOD = {
@@ -26,13 +26,12 @@ RET_MAX_OUTPUT_LENGTH = 200
 
 # prompt of different hierarchies during retrieval
 # directory / file / class
-RET_SCOPE_MAX_BACKTRACK_COUNT = 2
-RET_SCOPE_SYSTEM_PROMPT = '''You will be provided with a description of a Java method in a Java code repository, as well as a information list of directories or files or Java classes/interfaces/enums in this repository in JSON format as follows:
+RET_SCOPE_MAX_BACKTRACK_COUNT = 3
+RET_SCOPE_SYSTEM_PROMPT = '''You will be provided with a description of a Java method in a Java code repository, as well as a information list of directories or files or Java classes in this repository in JSON format as follows:
 {"id": <PLACEHOLDER>, "name": <PLACEHOLDER>, "summary": <PLACEHOLDER>}
-A directory contains files and subdirectories, a file contains Java classes/interfaces/enums, and a Java class/interface/enum contains methods.
+A directory contains files and subdirectories, a file contains Java classes, and a Java class contains methods.
 You need to follow the steps below:
-- Step 1: Calculate the probability that these directories or files or Java classes/interfaces/enums contain this method directly or indirectly.
-NOTICE: If a directory or file contains interfaces or enums but no class, the probability should be the lowest.
+- Step 1: Calculate the probability that these directories or files or Java classes contain this method directly or indirectly.
 - Step 2: Sort them from high to low according to the probability, return the option ID list.
 - Step 3: Give a reason of about 50 words.
 You need to give a JSON object that can be parsed directly as follows:

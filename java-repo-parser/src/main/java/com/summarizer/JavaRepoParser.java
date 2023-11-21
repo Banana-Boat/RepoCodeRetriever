@@ -65,7 +65,9 @@ public class JavaRepoParser {
                     subJDirectories.add(jDirectory);
             } else {
                 if (file.getName().endsWith(".java")) {
-                    jFiles.add(extractFile(file));
+                    JFile jFile = extractFile(file);
+                    if (jFile != null)
+                        jFiles.add(jFile);
                 }
             }
         }
@@ -94,7 +96,7 @@ public class JavaRepoParser {
             );
             CompilationUnit cu = StaticJavaParser.parse(file);
 
-            // get current file's all classes / interfaces / enums
+            // get current file's all classes
             // if there are nested inner classes, flatten them directly
             cu.accept(new VoidVisitorAdapter<Void>() {
                 @Override
@@ -102,9 +104,11 @@ public class JavaRepoParser {
                     super.visit(cu, arg);
 
                     for (ClassOrInterfaceDeclaration coi : cu.findAll(ClassOrInterfaceDeclaration.class)) {
+                        if (coi.isInterface()) continue;
+
                         // concat signature
                         String signature = (coi.isAbstract() ? "abstract " : "") +
-                                (coi.isInterface() ? "interface " : "class ") + coi.getNameAsString() +
+                                "class " + coi.getNameAsString() +
                                 ((coi.getExtendedTypes().size() == 0) ? "" :
                                         " extends " + coi.getExtendedTypes().toString()
                                                 .replace("[", "").replace("]", "")) +
@@ -117,12 +121,11 @@ public class JavaRepoParser {
                                 nodeCount,
                                 coi.getNameAsString(),
                                 signature,
-                                extractMethods(coi),
-                                coi.isInterface() ? "interface" : "class"
+                                extractMethods(coi)
                         ));
                     }
 
-                    for (EnumDeclaration e : cu.findAll(EnumDeclaration.class)) {
+                    /*for (EnumDeclaration e : cu.findAll(EnumDeclaration.class)) {
                         // concat signature
                         String signature = "enum " + e.getNameAsString() +
                                 ((e.getImplementedTypes().size() == 0) ? "" :
@@ -137,13 +140,16 @@ public class JavaRepoParser {
                                 extractMethods(e),
                                 "enum"
                         ));
-                    }
+                    }*/
                 }
             }, null);
         } catch (Exception e) {
             logs.add(file.getPath() + " can't be parsed for:\n" + e.getMessage());
             errorFileCount++;
         }
+
+        if(jClasses.size() == 0)
+            return null;
 
         nodeCount++;
         fileCount++;
