@@ -51,7 +51,7 @@ def filter_data1(raw_dir_path, output_file_path):
 
                 if obj['repo'] + obj['sha'] != cur_repo:
                     # limitation for data count in one repo
-                    if len(filtered_repo_data) >= 40:
+                    if len(filtered_repo_data) >= 50:
                         res.extend(filtered_repo_data)
                         repo_set.add(cur_repo)
 
@@ -64,7 +64,7 @@ def filter_data1(raw_dir_path, output_file_path):
                     continue
 
                 # limitation for directory hierarchy in path field
-                if obj['path'].count('/') < 3 or obj['path'].count('/') > 7:
+                if obj['path'].count('/') < 3 or obj['path'].count('/') > 8:
                     continue
 
                 # limitation for query's token count in docstring_tokens field
@@ -338,14 +338,14 @@ if __name__ == "__main__":
     repo2_file_path = os.path.join(filtered_dir_path, 'repo2.jsonl')
     data2_file_path = os.path.join(filtered_dir_path, 'data2.jsonl')
 
-    filter_data1(raw_dir_path, data1_file_path)
+    # filter_data1(raw_dir_path, data1_file_path)
 
     # get_repo_infos(data1_file_path, repo_info_file_path, 0)
 
-    filter_repo1(data1_file_path, repo_info_file_path, repo1_file_path)
+    # filter_repo1(data1_file_path, repo_info_file_path, repo1_file_path)
 
     # download_repos(repo1_file_path, repo_dir_path, 0)
 
-    filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
+    # filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
 
-    filter_data2(repo2_file_path, data1_file_path, data2_file_path)
+    # filter_data2(repo2_file_path, data1_file_path, data2_file_path)

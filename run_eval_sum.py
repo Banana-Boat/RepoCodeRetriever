@@ -55,6 +55,12 @@ if __name__ == "__main__":
                 sum_out_path = os.path.join(
                     result_dir_path, f"sum_out_{repo_name}.json")
 
+                # if sum_out_path exists, skip
+                if os.path.exists(sum_out_path):
+                    pipeline_logger.info(
+                        f"Skip {idx + start_idx}th repo: {repo_name}")
+                    continue
+
                 # create logger
                 sum_logger = logging.getLogger(sum_log_path)
                 sum_logger.addHandler(
