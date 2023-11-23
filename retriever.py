@@ -28,6 +28,7 @@ class Retriever:
 
         self.result_path = []  # result path, reset every retrieval
         self.most_probable_path = []  # most probable path, reset every retrieval
+        self.is_first_try = True  # reset every retrieval
         self.ret_times = 0  # retrieval times, reset every retrieval
 
     def _is_legal_input_text(self, system_input_text: str, user_input_text: str) -> bool:
@@ -140,6 +141,7 @@ class Retriever:
 
         # no method was selected in this class
         if infer_obj['id'] == -1:
+            self.is_first_try = False
             return {
                 'is_found': False,
                 'is_error': False,
@@ -209,7 +211,7 @@ class Retriever:
             }
 
         # try ids in turn
-        for idx, infer_id in enumerate(infer_obj['ids'][:RET_MAX_BACKTRACK_COUNT]):
+        for infer_id in infer_obj['ids'][:RET_MAX_BACKTRACK_COUNT]:
             cls_sum_obj = next(
                 filter(lambda x: x['id'] == infer_id, file_sum_obj['classes']), None)
             if cls_sum_obj is None:
@@ -221,7 +223,7 @@ class Retriever:
                     'is_error': True,
                 }
 
-            if idx == 0:
+            if self.is_first_try:
                 # add to most probable path if it is the first try
                 self.most_probable_path.append(cls_sum_obj['name'])
 
@@ -304,7 +306,7 @@ class Retriever:
             }
 
         # try ids in turn
-        for idx, infer_id in enumerate(infer_obj['ids'][:RET_MAX_BACKTRACK_COUNT]):
+        for infer_id in infer_obj['ids'][:RET_MAX_BACKTRACK_COUNT]:
             file_sum_obj = None
             sub_dir_sum_obj = None
             next_sum_obj = None
@@ -318,7 +320,6 @@ class Retriever:
 
             if file_sum_obj is None and sub_dir_sum_obj is None:
                 # can't find next_sum_obj
-
                 self.logger.info(
                     f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nThe file or subdirectory is not found in this directory.")
                 return {
@@ -328,14 +329,14 @@ class Retriever:
 
             if file_sum_obj is not None:
                 next_sum_obj = file_sum_obj
-                if idx == 0:
+                if self.is_first_try:
                     # add to most probable path if it is the first try
                     self.most_probable_path.append(next_sum_obj['name'])
 
                 res = self._retrieve_in_file(des, file_sum_obj)
             elif sub_dir_sum_obj is not None:
                 next_sum_obj = sub_dir_sum_obj
-                if idx == 0:
+                if self.is_first_try:
                     # add to most probable path if it is the first try
                     self.most_probable_path.append(next_sum_obj['name'])
 
@@ -359,7 +360,8 @@ class Retriever:
         start_time = time.time()
 
         self.result_path = []
-        self.most_probable_path = [repo_sum_obj['name']]
+        self.is_first_try = True
+        self.most_probable_path = []
         self.ret_times = 0
 
         res = self._retrieve_in_dir(des, repo_sum_obj)
@@ -370,7 +372,6 @@ class Retriever:
             f"Retrieval time cost: {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
 
         if res['is_found']:
-            self.result_path.append(repo_sum_obj['name'])
             self.result_path.reverse()
             res['path'] = self.result_path
         else:
