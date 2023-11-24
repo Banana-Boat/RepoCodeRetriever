@@ -10,6 +10,7 @@ import java.util.List;
 public class JFile {
   private Integer id;
   private String name;
-  private List<JClass> classes;
+  private String signature;
+  private List<JMethod> methods;
   private String path;
 }

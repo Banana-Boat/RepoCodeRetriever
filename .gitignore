@@ -1,14 +1,8 @@
-eval_data/filtered
-eval_data/repo
-eval_data/raw
-eval_data/sum_result
-eval_data/ret_log
-eval_data/parse_temp
-eval_data/ret_result.jsonl
+eval_data/*
+!eval_data/*.py
 
 java-repo-parser/target/
 java-repo-parser/repo/
-java-repo-parser/*.json
 
 repo/
 

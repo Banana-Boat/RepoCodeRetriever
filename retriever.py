@@ -2,7 +2,6 @@ import json
 import logging
 import re
 import time
-from typing import List
 from enum import Enum
 
 import tiktoken
@@ -31,7 +30,7 @@ class Retriever:
         self.is_first_try = True  # reset every retrieval
         self.ret_times = 0  # retrieval times, reset every retrieval
 
-    def _is_legal_input_text(self, system_input_text: str, user_input_text: str) -> bool:
+    def _is_legal_input(self, system_input_text: str, user_input_text: str) -> bool:
         '''
             Check if the input text length exceeds the model limit.
         '''
@@ -118,7 +117,7 @@ class Retriever:
                 'summary': method_sum_obj['summary'],
             }
             temp_str = f"{temp_obj}\n"
-            if not self._is_legal_input_text(RET_METHOD_SYSTEM_PROMPT, user_input_text + temp_str):
+            if not self._is_legal_input(RET_METHOD_SYSTEM_PROMPT, user_input_text + temp_str):
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {cls_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
@@ -189,7 +188,7 @@ class Retriever:
                 'summary': cls_sum_obj['summary'],
             }
             temp_str = f"{temp_obj}\n"
-            if not self._is_legal_input_text(RET_CLS_SYSTEM_PROMPT, user_input_text + temp_str):
+            if not self._is_legal_input(RET_CLS_SYSTEM_PROMPT, user_input_text + temp_str):
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
@@ -263,7 +262,7 @@ class Retriever:
                 'summary': sub_dir_sum_obj['summary'],
             }
             temp_str = f"{temp_obj}\n"
-            if not self._is_legal_input_text(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
+            if not self._is_legal_input(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
 
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nInput text length exceeds the model limit.")
@@ -282,7 +281,7 @@ class Retriever:
                 'summary': file_sum_obj['summary'],
             }
             temp_str = f"{temp_obj}\n"
-            if not self._is_legal_input_text(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
+            if not self._is_legal_input(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
 
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nInput text length exceeds the model limit.")

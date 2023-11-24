@@ -88,7 +88,18 @@ public class JavaRepoParser {
     }
 
     public JFile extractFile(File file) {
-        ArrayList<JClass> jClasses = new ArrayList<>();
+        class JClassContainer {
+            boolean isFoundCls = false;
+            String signature;
+            List<JMethod> methods;
+            void setInfo(String signature, List<JMethod> methods) {
+                isFoundCls = true;
+                this.signature = signature;
+                this.methods = methods;
+            }
+        }
+
+        JClassContainer jClassContainer = new JClassContainer();
 
         try {
             StaticJavaParser.setConfiguration(
@@ -96,15 +107,18 @@ public class JavaRepoParser {
             );
             CompilationUnit cu = StaticJavaParser.parse(file);
 
-            // get current file's all classes
-            // if there are nested inner classes, flatten them directly
             cu.accept(new VoidVisitorAdapter<Void>() {
                 @Override
                 public void visit(CompilationUnit cu, Void arg) {
                     super.visit(cu, arg);
 
+                    // inner class and non-public class will be found at first
                     for (ClassOrInterfaceDeclaration coi : cu.findAll(ClassOrInterfaceDeclaration.class)) {
                         if (coi.isInterface()) continue;
+
+                        // only save the class with the same name as the file name
+                        if (!file.getName().split("\\.")[0].equals(coi.getNameAsString()))
+                            continue;
 
                         // concat signature
                         String signature = (coi.isAbstract() ? "abstract " : "") +
@@ -116,31 +130,10 @@ public class JavaRepoParser {
                                         " implements " + coi.getImplementedTypes().toString()
                                                 .replace("[", "").replace("]", ""));
 
-                        nodeCount++;
-                        jClasses.add(new JClass(
-                                nodeCount,
-                                coi.getNameAsString(),
+                        jClassContainer.setInfo(
                                 signature,
-                                extractMethods(coi)
-                        ));
+                                extractMethods(coi));
                     }
-
-                    /*for (EnumDeclaration e : cu.findAll(EnumDeclaration.class)) {
-                        // concat signature
-                        String signature = "enum " + e.getNameAsString() +
-                                ((e.getImplementedTypes().size() == 0) ? "" :
-                                        " implements " + e.getImplementedTypes().toString()
-                                                .replace("[", "").replace("]", ""));
-
-                        nodeCount++;
-                        jClasses.add(new JClass(
-                                nodeCount,
-                                e.getNameAsString(),
-                                signature,
-                                extractMethods(e),
-                                "enum"
-                        ));
-                    }*/
                 }
             }, null);
         } catch (Exception e) {
@@ -148,7 +141,7 @@ public class JavaRepoParser {
             errorFileCount++;
         }
 
-        if(jClasses.size() == 0)
+        if(!jClassContainer.isFoundCls)
             return null;
 
         nodeCount++;
@@ -156,7 +149,8 @@ public class JavaRepoParser {
         return new JFile(
                 nodeCount,
                 file.getName(),
-                jClasses,
+                jClassContainer.signature,
+                jClassContainer.methods,
                 file.getPath()
         );
     }

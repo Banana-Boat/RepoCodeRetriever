@@ -4,12 +4,18 @@ import os
 import sys
 from dotenv import load_dotenv
 from ie_client import IEClient
+from openai_client import OpenAIClient
 from run_sum import parse_repo
 from summarizer import Summarizer
 
 
 if __name__ == "__main__":
-    start_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 0
+    if len(sys.argv) != 3:
+        print("Usage: python run_eval_sum.py <start_idx> <end_idx>")
+        exit(1)
+
+    start_idx = int(sys.argv[1])
+    end_idx = int(sys.argv[2])
 
     repo_root_path = "./eval_data/repo"
     repo_list_file_path = "./eval_data/filtered/repo2.jsonl"
@@ -22,9 +28,10 @@ if __name__ == "__main__":
                         datefmt='%m/%d/%Y %H:%M:%S')
     pipeline_logger = logging.getLogger("pipeline")
 
-    # create client for Inference Endpoints
+    # create clients
     try:
         ie_client = IEClient()
+        openie_client = OpenAIClient()
     except Exception as e:
         pipeline_logger.error(e)
         exit(1)
@@ -35,7 +42,7 @@ if __name__ == "__main__":
     with open(repo_list_file_path, "r") as f_repo_list:
         repo_objs = [json.loads(line) for line in f_repo_list.readlines()]
 
-        for idx, repo_obj in enumerate(repo_objs[start_idx:]):
+        for idx, repo_obj in enumerate(repo_objs[start_idx:end_idx]):
             try:
                 repo_name = repo_obj['repo'].split('/')[-1]
                 repo_path = os.path.join(
@@ -81,7 +88,7 @@ if __name__ == "__main__":
 
                 # build summary tree for entire repo
 
-                summarizer = Summarizer(sum_logger, ie_client)
+                summarizer = Summarizer(sum_logger, ie_client, openie_client)
                 with open(parse_out_path, "r") as f_parse_out:
                     repo_obj = json.loads(f_parse_out.read())
                     result = summarizer.summarize_repo(repo_obj)

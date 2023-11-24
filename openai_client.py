@@ -48,6 +48,16 @@ class OpenAIClient:
 
         for _ in range(3):  # retry 3 times at most when a error occurred
             try:
+                messages = [{
+                    "role": "user",
+                    "content": user_input_text
+                }]
+                if system_input_text != "":
+                    messages.insert(0, {
+                        "role": "system",
+                        "content": system_input_text
+                    })
+
                 res = requests.post("https://api.openai.com/v1/chat/completions",
                                     timeout=20,
                                     headers={
@@ -56,16 +66,7 @@ class OpenAIClient:
                                     },
                                     json={
                                         "model": self.model_name,
-                                        "messages": [
-                                            {
-                                                "role": "system",
-                                                "content": system_input_text
-                                            },
-                                            {
-                                                "role": "user",
-                                                "content": user_input_text
-                                            }
-                                        ],
+                                        "messages": messages,
                                         "max_tokens": max_output_length,
                                         "n": 1,
                                         "temperature": 0.2,

@@ -4,6 +4,7 @@ import os
 from typing import Tuple
 from dotenv import load_dotenv
 from ie_client import IEClient
+from openai_client import OpenAIClient
 
 from summarizer import Summarizer
 
@@ -67,9 +68,10 @@ if __name__ == "__main__":
     pipeline_logger.info(
         f"Repo parsed successfully, log file was written to {parse_log_path}, result file was written to {parse_out_path}.")
 
-    # create client for Inference Endpoints
+    # create clients
     try:
         ie_client = IEClient()
+        openie_client = OpenAIClient()
     except Exception as e:
         pipeline_logger.error(e)
         exit(1)
@@ -80,7 +82,7 @@ if __name__ == "__main__":
         "Client for Inference Endpoints was created successfully.")
 
     # build summary tree for entire repo
-    summarizer = Summarizer(sum_logger, ie_client)
+    summarizer = Summarizer(sum_logger, ie_client, openie_client)
     with open(parse_out_path, "r") as f_parse_out:
         repo_obj = json.loads(f_parse_out.read())
         result = summarizer.summarize_repo(repo_obj)

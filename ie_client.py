@@ -31,33 +31,40 @@ class IEClient:
         res = requests.get(self.url + '/health')
         return res.status_code == 200
 
-    def generate(self, input_text: str, max_output_length: int, retries: int = 5) -> str:
-        res = requests.post(self.url,
-                            headers={
-                                "Authorization": f"Bearer {self.token}",
-                                "Content-Type": "application/json"
-                            },
-                            json={
-                                "inputs": input_text,
-                                "parameters": {
-                                    "max_new_tokens": max_output_length,
-                                    "do_sample": True,
-                                    "temperature": 0.2,
-                                    "top_p": 0.9,
-                                    "num_return_sequences": 1
-                                }
-                            })
+    def generate(self, input_text: str, max_output_length: int) -> str:
+        error_msg = ""
 
-        # if request failed, retry
-        if res.status_code != 200 or len(res.json()) == 0:
-            if retries > 0:
+        for _ in range(3):
+            try:
+                res = requests.post(self.url,
+                                    timeout=20,
+                                    headers={
+                                        "Authorization": f"Bearer {self.token}",
+                                        "Content-Type": "application/json"
+                                    },
+                                    json={
+                                        "inputs": input_text,
+                                        "parameters": {
+                                            "max_new_tokens": max_output_length,
+                                            "do_sample": True,
+                                            "temperature": 0.2,
+                                            "top_p": 0.9,
+                                            "num_return_sequences": 1
+                                        }
+                                    })
+
+                # if request failed, retry
+                if res.status_code != 200 or len(res.json()) == 0:
+                    raise Exception(res.json())
+
+                return res.json()[0]['generated_text']
+            except Exception as e:
+                error_msg = e
                 # wait random time to reduce pressure on server
                 sleep(random.randint(5, 25))
-                return self.generate(input_text, max_output_length, retries - 1)
-            else:
-                raise Exception(res.json())
+                continue
 
-        return res.json()[0]['generated_text']
+        raise Exception(error_msg)
 
 
 if __name__ == '__main__':

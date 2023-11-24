@@ -116,13 +116,10 @@ if __name__ == "__main__":
                     f"Can't get true path array for id {result_obj['id']}")
                 break
 
-            print(true_path_arr)
-            print(result_obj['path'])
-
             # calculate accuracy & efficiency & precision
             correct_count = 0
             for i in range(len(true_path_arr)):
-                if result_obj['path'][i] == true_path_arr[i]:
+                if i < len(result_obj['path']) and result_obj['path'][i] == true_path_arr[i]:
                     correct_count += 1
                 else:
                     break
@@ -137,9 +134,6 @@ if __name__ == "__main__":
                 precision_arr.append(
                     correct_count / len(true_path_arr))
 
-        print(accuracy_arr)
-        print(precision_arr)
-        print(efficiency_arr)
         accuracy = np.mean(accuracy_arr)
         precision = np.mean(precision_arr)
         efficiency = np.mean(efficiency_arr)

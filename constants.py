@@ -9,10 +9,6 @@ SUM_DIR = {
     "max_output_length": 200,
 }
 SUM_FILE = {
-    "prompt": "Summarize the file below in about 50 words, don't include examples and details.",
-    "max_output_length": 100,
-}
-SUM_CLS = {
     "prompt": "Summarize the Java class below in about 50 words, don't include examples and details.",
     "max_output_length": 100,
 }

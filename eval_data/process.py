@@ -59,6 +59,10 @@ def filter_data1(raw_dir_path, output_file_path):
                     cur_repo = obj['repo'] + obj['sha']
                     cur_repo_path_set.clear()
 
+                # limitation for whether the file equals to the class name
+                if obj['path'].split('/')[-1].split('.')[0] != obj['func_name'].split('.')[0]:
+                    continue
+
                 # limitation for same path in one repo
                 if obj['path'] in cur_repo_path_set:
                     continue

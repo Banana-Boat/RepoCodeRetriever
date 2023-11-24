@@ -2,52 +2,67 @@ from concurrent.futures import ThreadPoolExecutor
 import logging
 import time
 from typing import List
+import tiktoken
 from tqdm import tqdm
 from transformers import CodeLlamaTokenizer
 
 from ie_client import IEClient
-from constants import INPUT_SEPARATOR, LOG_SEPARATOR, NO_SUMMARY, SUM_CLS, SUM_DIR, SUM_FILE, SUM_METHOD
+from constants import INPUT_SEPARATOR, LOG_SEPARATOR, NO_SUMMARY, SUM_DIR, SUM_FILE, SUM_METHOD
+from openai_client import OpenAIClient
 
 
 class Summarizer:
-    def __init__(self, logger: logging.Logger, ie_client: IEClient):
+    def __init__(self, logger: logging.Logger, ie_client: IEClient, openai_client: OpenAIClient):
         self.logger = logger
-        self.tokenizer = CodeLlamaTokenizer.from_pretrained(
+        self.codellama_tokenizer = CodeLlamaTokenizer.from_pretrained(
             ie_client.model_name)
+        self.openai_tokenizer = tiktoken.encoding_for_model(
+            openai_client.model_name)
 
         self.ie_client = ie_client
+        self.openai_client = openai_client
+
         self.gen_err_count = 0  # number of generation error
         self.total_ignore_count = 0  # number of ignored nodes
         self.truncation_count = 0  # number of truncated nodes
+        self.token_used_count = 0
 
         self.SPECIAL_TOKEN_NUM = 5
 
-    def _is_legal_input_text(self, input_text: str, max_output_length: int) -> bool:
+    def _is_legal_openai_input(self, user_input_text: str, max_output_length: int) -> bool:
+        '''
+            Check if the input text length exceeds the model limit.
+        '''
+        encoded_text = self.openai_tokenizer.encode(user_input_text)
+
+        return len(encoded_text) <= self.openai_client.max_number_of_tokens - max_output_length
+
+    def _is_legal_codellama_input(self, input_text: str, max_output_length: int) -> bool:
         '''
             Check if the input text length is less than model limit.
         '''
-        encoded = self.tokenizer.encode(
+        encoded = self.codellama_tokenizer.encode(
             input_text, add_special_tokens=False, padding=False, truncation=False)
 
         return len(encoded) <= self.ie_client.max_number_of_tokens - self.SPECIAL_TOKEN_NUM - max_output_length
 
-    def _build_input(self, node_id: int, prompt: str, context: str, max_output_length: int) -> str:
+    def _build_codellama_input(self, node_id: int, prompt: str, context: str, max_output_length: int) -> str:
         '''
             Concat promp and context, add special tokens, truncate if exceeds the token limit
         '''
         input_text = f"{prompt}\n{INPUT_SEPARATOR}\n{context}"
 
-        if not self._is_legal_input_text(input_text, max_output_length):
+        if not self._is_legal_codellama_input(input_text, max_output_length):
             max_input_length = self.ie_client.max_number_of_tokens - \
                 self.SPECIAL_TOKEN_NUM - max_output_length
-            encoded = self.tokenizer.encode(
+            encoded = self.codellama_tokenizer.encode(
                 input_text,
                 add_special_tokens=False,
                 padding=False, truncation=True,
                 max_length=max_input_length
             )
 
-            truncated_input_text = self.tokenizer.decode(
+            truncated_input_text = self.codellama_tokenizer.decode(
                 encoded, skip_special_tokens=False)
             self.logger.warning(
                 f"TRUNCATION{LOG_SEPARATOR}\nNode ID: {node_id}\nInput text exceeds the token limit, truncates from:\n{input_text}\nto:\n{truncated_input_text}")
@@ -56,10 +71,25 @@ class Summarizer:
 
         return f"<s>[INST] {input_text} [/INST]"
 
-    def _summarize(self, node_id: int, input_text: str, max_output_length: int) -> dict:
+    def _openai_summarize(self, node_id: int, input_text: str, max_output_length: int) -> str:
         '''
             Generate summary through API calls.
-            return: a list of {id: int, input_text: str, output_text: str}
+        '''
+        try:
+            total_tokens, output_text = self.openai_client.generate(
+                "", input_text, max_output_length)
+            self.token_used_count += total_tokens
+            return output_text
+        except Exception as e:
+            self.gen_err_count += 1
+            self.logger.error(
+                f"GENERATION FAILED{LOG_SEPARATOR}\nNode ID: {node_id}\nFailed to generate summary for:\n{e}")
+            return NO_SUMMARY
+
+    def _codellama_summarize(self, node_id: int, input_text: str, max_output_length: int) -> dict:
+        '''
+            Generate summary through API calls.
+            return: {id: int, input_text: str, output_text: str}
             the purpose of returning input_text is to facilitate logging
         '''
         try:
@@ -78,7 +108,7 @@ class Summarizer:
                 'output_text': NO_SUMMARY
             }
 
-    def _batch_summarize(self, input_dicts: List[dict], max_output_length: int) -> List[dict]:
+    def _codellama_batch_summarize(self, input_dicts: List[dict], max_output_length: int) -> List[dict]:
         '''
             Generate a batch of summary through async API calls, call API concurrently in max batch size.
             input_dicts: a list of {id: int, input_text: str}
@@ -94,7 +124,7 @@ class Summarizer:
             if len(input_dicts) <= max_bs:
                 return list(
                     executor.map(
-                        lambda x: self._summarize(
+                        lambda x: self._codellama_summarize(
                             x['id'], x['input_text'], max_output_length),
                         input_dicts
                     )
@@ -102,13 +132,13 @@ class Summarizer:
 
             res_dicts = list(
                 executor.map(
-                    lambda x: self._summarize(
+                    lambda x: self._codellama_summarize(
                         x['id'], x['input_text'], max_output_length),
                     input_dicts[:max_bs]
                 )
             )
             res_dicts.extend(
-                self._batch_summarize(
+                self._codellama_batch_summarize(
                     input_dicts[max_bs:],
                     max_output_length
                 )
@@ -135,11 +165,12 @@ class Summarizer:
                 context = method_obj["signature"] + method_obj["body"]
                 input_dicts.append({
                     'id': method_obj['id'],
-                    'input_text': self._build_input(method_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
+                    'input_text': self._build_codellama_input(method_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
                 })
 
         # generate summary
-        output_dicts = self._batch_summarize(input_dicts, MAX_OUTPUT_LENGTH)
+        output_dicts = self._codellama_batch_summarize(
+            input_dicts, MAX_OUTPUT_LENGTH)
 
         # assemble method nodes
         method_nodes = []
@@ -170,19 +201,19 @@ class Summarizer:
 
         return method_nodes
 
-    def _summarize_cls(self, cls_obj: dict) -> dict:
+    def _summarize_file(self, file_obj: dict) -> dict:
         '''
-            Summarize for class according to its methods.
+            Summarize for class with the same name as the file according to its methods.
             methods in one class can be processed in batch.
         '''
-        PROMPT = SUM_CLS['prompt']
-        MAX_OUTPUT_LENGTH = SUM_CLS['max_output_length']
+        PROMPT = SUM_FILE['prompt']
+        MAX_OUTPUT_LENGTH = SUM_FILE['max_output_length']
 
         ignore_method_count = 0
-        context = cls_obj["signature"] + " {\n"
+        context = file_obj["signature"] + " {\n"
 
         # handle all methods
-        method_nodes = self._summarize_methods(cls_obj["methods"])
+        method_nodes = self._summarize_methods(file_obj["methods"])
 
         # concat summary of methods to context
         for idx, method_node in enumerate(method_nodes):
@@ -192,7 +223,7 @@ class Summarizer:
                 tmp_str = f"\t{method_node['signature']}; // {method_node['summary']}\n"
 
             # ignore methods that exceed the token limit
-            if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+            if not self._is_legal_codellama_input(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                 ignore_method_count = len(method_nodes) - idx
                 break
 
@@ -200,78 +231,23 @@ class Summarizer:
 
         context += "}"
 
-        input_text = self._build_input(
-            cls_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
-        summary = self._summarize(
-            cls_obj['id'], input_text, MAX_OUTPUT_LENGTH)['output_text']
+        input_text = self._build_codellama_input(
+            file_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
+        summary = self._codellama_summarize(
+            file_obj['id'], input_text, MAX_OUTPUT_LENGTH)['output_text']
 
         self.logger.info(
-            f"CLASS{LOG_SEPARATOR}\nNode ID: {cls_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
+            f"FILE{LOG_SEPARATOR}\nNode ID: {file_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
         if ignore_method_count != 0:
             self.logger.info(
                 f"Number of ignored method: {ignore_method_count}")
         self.pbar.update(1)
 
         return {
-            "id": cls_obj["id"],
-            "name": cls_obj["name"],
-            "summary": summary,
-            "methods": method_nodes,
-        }
-
-    def _summarize_file(self, file_obj: dict) -> dict:
-        '''
-            Summarize for Java file according to its class
-        '''
-        PROMPT = SUM_FILE['prompt']
-        MAX_OUTPUT_LENGTH = SUM_FILE['max_output_length']
-
-        valid_context_count = 0
-        summary = NO_SUMMARY
-        ignore_cls_count = 0
-        input_text = ""
-        context = f"File name: {file_obj['name']}.\n"
-
-        # handle all classes
-        cls_nodes = []
-        for cls_obj in file_obj["classes"]:
-            cls_nodes.append(self._summarize_cls(cls_obj))
-
-        # concat summary of classes to context
-        if len(cls_nodes) > 0:
-            context += "The following is the classes in the file and the corresponding summary:\n"
-
-            for idx, cls_node in enumerate(cls_nodes):
-                if cls_node['summary'] == NO_SUMMARY:
-                    continue
-
-                tmp_str = f"- The summary of Java class named {cls_node['name']}: {cls_node['summary']}\n"
-
-                if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
-                    ignore_cls_count = len(cls_nodes) - idx
-                    break
-
-                valid_context_count += 1
-                context += tmp_str
-
-        if valid_context_count != 0:
-            input_text = self._build_input(
-                file_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
-            summary = self._summarize(file_obj['id'], input_text, MAX_OUTPUT_LENGTH)[
-                'output_text']
-
-        self.logger.info(
-            f"FILE{LOG_SEPARATOR}\nNode ID: {file_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
-        if ignore_cls_count != 0:
-            self.logger.info(f"Number of ignored class: {ignore_cls_count}")
-        self.pbar.update(1)
-
-        return {
             "id": file_obj["id"],
             "name": file_obj["name"],
             "summary": summary,
-            "classes": cls_nodes,
-            "path": file_obj["path"],
+            "methods": method_nodes,
         }
 
     def _summarize_dir(self, dir_obj: dict) -> dict:
@@ -310,7 +286,7 @@ class Summarizer:
 
                 tmp_str = f"- The summary of directory named {sub_dir_node['name']}: {sub_dir_node['summary']}\n"
 
-                if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+                if not self._is_legal_openai_input(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                     # the progress bar may be updated incorrectly due to the omission of some nodes
                     ignore_sub_dir_count = len(sub_dir_nodes) - idx
                     break
@@ -325,15 +301,15 @@ class Summarizer:
 
         # concat summary of files to context
         if len(file_nodes) > 0:
-            context += "The following is the file in the directory and the corresponding summary:\n"
+            context += "The following is the Java class file in the directory and the corresponding summary:\n"
 
             for idx, file_node in enumerate(file_nodes):
                 if file_node['summary'] == NO_SUMMARY:
                     continue
 
-                tmp_str = f"- The summary of file named {file_node['name']}: {file_node['summary']}\n"
+                tmp_str = f"- The summary of Java class file named {file_node['name']}: {file_node['summary']}\n"
 
-                if not self._is_legal_input_text(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+                if not self._is_legal_openai_input(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
                     ignore_file_count = len(file_nodes) - idx
                     break
 
@@ -341,10 +317,9 @@ class Summarizer:
                 context += tmp_str
 
         if valid_context_count != 0:
-            input_text = self._build_input(
-                dir_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
-            summary = self._summarize(dir_obj['id'], input_text, MAX_OUTPUT_LENGTH)[
-                'output_text']
+            input_text = f"{PROMPT}\n{INPUT_SEPARATOR}\n{context}"
+            summary = self._openai_summarize(
+                dir_obj['id'], input_text, MAX_OUTPUT_LENGTH)
 
         self.logger.info(
             f"DIRECTORY{LOG_SEPARATOR}\nNode ID: {dir_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
@@ -383,6 +358,8 @@ class Summarizer:
                 f"Number of ignored node: {self.total_ignore_count}")
             self.logger.info(
                 f"Number of truncated node: {self.truncation_count}")
+            self.logger.info(f"Token Used: {self.token_used_count}")
+
             self.logger.info(
                 f"Summarization time cost: {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
 
