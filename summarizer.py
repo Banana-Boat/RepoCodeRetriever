@@ -29,11 +29,12 @@ class Summarizer:
 
         self.SPECIAL_TOKEN_NUM = 5
 
-    def _is_legal_openai_input(self, user_input_text: str, max_output_length: int) -> bool:
+    def _is_legal_openai_input(self, system_input_text: str, user_input_text: str, max_output_length: int) -> bool:
         '''
             Check if the input text length exceeds the model limit.
         '''
-        encoded_text = self.openai_tokenizer.encode(user_input_text)
+        encoded_text = self.openai_tokenizer.encode(
+            system_input_text + user_input_text)
 
         return len(encoded_text) <= self.openai_client.max_number_of_tokens - max_output_length
 
@@ -71,13 +72,13 @@ class Summarizer:
 
         return f"<s>[INST] {input_text} [/INST]"
 
-    def _openai_summarize(self, node_id: int, input_text: str, max_output_length: int) -> str:
+    def _openai_summarize(self, node_id: int, system_input_text: str, user_input_text: str, max_output_length: int) -> str:
         '''
             Generate summary through API calls.
         '''
         try:
             total_tokens, output_text = self.openai_client.generate(
-                "", input_text, max_output_length)
+                system_input_text, user_input_text, max_output_length)
             self.token_used_count += total_tokens
             return output_text
         except Exception as e:
@@ -254,7 +255,7 @@ class Summarizer:
         '''
             Summarize for directory according to its subdirectories and files.
         '''
-        PROMPT = SUM_DIR['prompt']
+        SYSTEM_PROMPT = SUM_DIR['system_prompt']
         MAX_OUTPUT_LENGTH = SUM_DIR['max_output_length']
 
         # if current directory only has one subdirectory(no file),
@@ -268,6 +269,7 @@ class Summarizer:
         summary = NO_SUMMARY
         ignore_sub_dir_count = 0
         ignore_file_count = 0
+        user_input_text = f"Directory name: {dir_obj['name']}.\n{INPUT_SEPARATOR}\nInformation list:\n"
         input_text = ""
         context = f"Directory name: {dir_obj['name']}.\n"
 
@@ -276,23 +278,22 @@ class Summarizer:
         for sub_dir_obj in dir_obj["subdirectories"]:
             sub_dir_nodes.append(self._summarize_dir(sub_dir_obj))
 
-        # concat summary of subdirectories to context
+        # concat summary of subdirectories
         if len(sub_dir_nodes) > 0:
-            context += "The following is the subdirectory in the directory and the corresponding summary:\n"
-
             for idx, sub_dir_node in enumerate(sub_dir_nodes):
-                if sub_dir_node['summary'] == NO_SUMMARY:
-                    continue
-
-                tmp_str = f"- The summary of directory named {sub_dir_node['name']}: {sub_dir_node['summary']}\n"
-
-                if not self._is_legal_openai_input(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
-                    # the progress bar may be updated incorrectly due to the omission of some nodes
+                temp_obj = {
+                    'id': sub_dir_node['id'],
+                    'type': 'directory',
+                    'name': sub_dir_node['name'],
+                    'summary': sub_dir_node['summary'],
+                }
+                temp_str = f"{temp_obj}\n"
+                if not self._is_legal_openai_input(SYSTEM_PROMPT, user_input_text + temp_str, MAX_OUTPUT_LENGTH):
                     ignore_sub_dir_count = len(sub_dir_nodes) - idx
                     break
 
+                user_input_text += temp_str
                 valid_context_count += 1
-                context += tmp_str
 
         # handle all files
         file_nodes = []
@@ -301,28 +302,27 @@ class Summarizer:
 
         # concat summary of files to context
         if len(file_nodes) > 0:
-            context += "The following is the Java class file in the directory and the corresponding summary:\n"
-
             for idx, file_node in enumerate(file_nodes):
-                if file_node['summary'] == NO_SUMMARY:
-                    continue
-
-                tmp_str = f"- The summary of Java class file named {file_node['name']}: {file_node['summary']}\n"
-
-                if not self._is_legal_openai_input(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+                temp_obj = {
+                    'id': file_node['id'],
+                    'type': 'file',
+                    'name': file_node['name'],
+                    'summary': file_node['summary'],
+                }
+                temp_str = f"{temp_obj}\n"
+                if not self._is_legal_openai_input(SYSTEM_PROMPT, user_input_text + temp_str, MAX_OUTPUT_LENGTH):
                     ignore_file_count = len(file_nodes) - idx
                     break
 
+                user_input_text += temp_str
                 valid_context_count += 1
-                context += tmp_str
 
         if valid_context_count != 0:
-            input_text = f"{PROMPT}\n{INPUT_SEPARATOR}\n{context}"
             summary = self._openai_summarize(
-                dir_obj['id'], input_text, MAX_OUTPUT_LENGTH)
+                dir_obj['id'], SYSTEM_PROMPT, user_input_text, MAX_OUTPUT_LENGTH)
 
         self.logger.info(
-            f"DIRECTORY{LOG_SEPARATOR}\nNode ID: {dir_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
+            f"DIRECTORY{LOG_SEPARATOR}\nNode ID: {dir_obj['id']}\nSystem Input:\n{SYSTEM_PROMPT}\nUser Input:\n{user_input_text}\nOutput:\n{summary}")
         if ignore_file_count != 0:
             self.logger.info(f"Number of ignored file: {ignore_file_count}")
         if ignore_sub_dir_count != 0:

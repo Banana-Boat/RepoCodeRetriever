@@ -7,26 +7,15 @@ import numpy as np
 
 
 def get_true_path_arr(sum_out_path, true_path_str) -> List[str]:
-    def get_method_path(cls_obj, path_str):
+    def get_method_path(file_obj, path_str):
         if path_str[0] == '/':
             path_str = path_str[1:]
 
-        for method_obj in cls_obj['methods']:
+        for method_obj in file_obj['methods']:
             if path_str.startswith(method_obj['name']):
                 true_path_arr.append(method_obj['name'])
                 return
         raise Exception("Can't find method path")
-
-    def get_cls_path(file_obj, path_str):
-        if path_str[0] == '/':
-            path_str = path_str[1:]
-
-        for cls_obj in file_obj['classes']:
-            if path_str.startswith(cls_obj['name']):
-                true_path_arr.append(cls_obj['name'])
-                get_method_path(cls_obj, path_str[len(cls_obj['name']):])
-                return
-        raise Exception("Can't find class path")
 
     def get_file_path(dir_obj, path_str):
         if path_str[0] == '/':
@@ -41,7 +30,7 @@ def get_true_path_arr(sum_out_path, true_path_str) -> List[str]:
         for file_obj in dir_obj['files']:
             if path_str.startswith(file_obj['name']):
                 true_path_arr.append(file_obj['name'])
-                get_cls_path(file_obj, path_str[len(file_obj['name']):])
+                get_method_path(file_obj, path_str[len(file_obj['name']):])
                 return
 
         raise Exception("Can't find file path")
@@ -55,10 +44,10 @@ def get_true_path_arr(sum_out_path, true_path_str) -> List[str]:
         try:
             # if not only repo name in root node
             if len(sum_result_obj['name'].split('/')) > 1:
-                path_in_root_node = "/".join(
+                path_exclude_repo_name = "/".join(
                     sum_result_obj['name'].split('/')[1:])
-                if true_path_str.startswith(path_in_root_node):
-                    true_path_str = true_path_str[len(path_in_root_node):]
+                if true_path_str.startswith(path_exclude_repo_name):
+                    true_path_str = true_path_str[len(path_exclude_repo_name):]
                     get_file_path(sum_result_obj, true_path_str)
                 else:
                     raise Exception(
@@ -94,27 +83,27 @@ if __name__ == "__main__":
             if result_obj['is_error']:
                 pipeline_logger.error(
                     f"Error occured for id {result_obj['id']}")
-                break
+                exit(1)
 
             # get corresponding data object
             data_obj = next(
                 filter(lambda x: x["id"] == result_obj["id"], data_objs), None)
             if data_obj is None:
                 pipeline_logger.error(
-                    f"Data object not found for id {result_obj['id']}")
-                break
+                    f"Data object not found for id {result_obj['id']}, skip it.")
+                continue
 
             # get true path arr
             repo_name = data_obj['repo'].split('/')[-1]
             sum_out_path = os.path.join(
                 sum_result_root_path, repo_name, f"sum_out_{repo_name}.json")
-            true_path_str = f"{data_obj['path']}/{data_obj['func_name'].replace('.', '/')}"
+            true_path_str = f"{data_obj['path']}/{data_obj['func_name'].split('.')[1]}"
 
             true_path_arr = get_true_path_arr(sum_out_path, true_path_str)
             if true_path_arr is None or len(true_path_arr) == 0:
                 pipeline_logger.error(
                     f"Can't get true path array for id {result_obj['id']}")
-                break
+                continue
 
             # calculate accuracy & efficiency & precision
             correct_count = 0
@@ -134,9 +123,9 @@ if __name__ == "__main__":
                 precision_arr.append(
                     correct_count / len(true_path_arr))
 
-        accuracy = np.mean(accuracy_arr)
-        precision = np.mean(precision_arr)
-        efficiency = np.mean(efficiency_arr)
+        accuracy = round(np.mean(accuracy_arr), 3)
+        precision = round(np.mean(precision_arr), 3)
+        efficiency = round(np.mean(efficiency_arr), 3)
 
         pipeline_logger.info(
             f"\nAccuracy: {accuracy}\nPrecision: {precision}\nEfficiency: {efficiency}")

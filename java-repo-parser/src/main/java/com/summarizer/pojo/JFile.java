@@ -12,5 +12,4 @@ public class JFile {
   private String name;
   private String signature;
   private List<JMethod> methods;
-  private String path;
 }

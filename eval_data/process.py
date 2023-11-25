@@ -46,6 +46,14 @@ def filter_data1(raw_dir_path, output_file_path):
                         obj['repo'] == 'banq/jdonframework' or \
                         obj['repo'] == 'sshtools/j2ssh-maverick' or \
                         obj['repo'] == 'BranchMetrics/android-branch-deep-linking' or \
+                        obj['repo'] == 'OpenLiberty/open-liberty' or \
+                        obj['repo'] == 'alkacon/opencms-core' or \
+                        obj['repo'] == 'google/j2objc' or \
+                        obj['repo'] == 'hazelcast/hazelcast' or \
+                        obj['repo'] == 'liferay/com-liferay-commerce' or \
+                        obj['repo'] == 'apache/incubator-druid' or \
+                        obj['repo'] == 'deeplearning4j/deeplearning4j' or \
+                        obj['repo'] == 'jamesagnew/hapi-fhir' or \
                         obj['repo'] == 'graknlabs/grakn':
                     continue
 
@@ -68,7 +76,7 @@ def filter_data1(raw_dir_path, output_file_path):
                     continue
 
                 # limitation for directory hierarchy in path field
-                if obj['path'].count('/') < 3 or obj['path'].count('/') > 8:
+                if obj['path'].count('/') < 3 or obj['path'].count('/') > 9:
                     continue
 
                 # limitation for query's token count in docstring_tokens field
@@ -197,7 +205,7 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
                     return
 
             # limitation for star count
-            if repo_info['stargazers_count'] < 50:
+            if repo_info['stargazers_count'] < 30:
                 continue
 
             # limitation for size
@@ -262,7 +270,7 @@ def filter_repo2(repo_file_path, repo_root_path, output_file_path):
                 # print(
                 #     f"Repo: {repo_obj['repo']}, Node count: {node_count}")
 
-                if node_count > 2000:
+                if node_count > 1300:
                     continue
 
                 repos.append(repo_obj)
@@ -275,9 +283,43 @@ def filter_repo2(repo_file_path, repo_root_path, output_file_path):
             out_f.write('\n')
 
 
+def has_true_path_arr(parse_out_path, true_path_str) -> bool:
+    def get_method_path(file_obj, path_str):
+        if path_str[0] == '/':
+            path_str = path_str[1:]
+
+        for method_obj in file_obj['methods']:
+            if path_str.startswith(method_obj['name']):
+                return True
+
+        return False
+
+    def get_file_path(dir_obj, path_str):
+        if path_str[0] == '/':
+            path_str = path_str[1:]
+
+        for sub_dir_obj in dir_obj['subdirectories']:
+            if path_str.startswith(sub_dir_obj['name']):
+                return get_file_path(sub_dir_obj, path_str[len(sub_dir_obj['name']):])
+
+        for file_obj in dir_obj['files']:
+            if path_str.startswith(file_obj['name']):
+                return get_method_path(file_obj, path_str[len(file_obj['name']):])
+
+        return False
+
+    if not os.path.exists(parse_out_path):
+        return False
+
+    with open(parse_out_path, "r") as f:
+        parse_result_obj = json.load(f)['mainDirectory']
+        return get_file_path(parse_result_obj, true_path_str)
+
+
 def filter_data2(repo_file_path, data_file_path, output_file_path):
     res = []
     repo_set = set()
+    no_true_path_count = 0
 
     with open(repo_file_path, 'r') as repo_f:
         for line in repo_f:
@@ -291,10 +333,21 @@ def filter_data2(repo_file_path, data_file_path, output_file_path):
             if obj['repo'] not in repo_set:
                 continue
 
+            # java-repo-parser ignores the constructor / getter / setter / equals / toString / hashCode
+            # so we need to filter them out
+            if not has_true_path_arr(
+                    os.path.join(
+                        './parse_temp', f"parse_out_{obj['repo'].split('/')[-1]}-{obj['sha']}.json"),
+                    f"{obj['path']}/{obj['func_name'].split('.')[1]}"
+            ):
+                no_true_path_count += 1
+                continue
+
             obj['id'] = idx
             idx += 1
             res.append(obj)
 
+    # print(f'No true path count: {no_true_path_count}')
     print(f'Filtered data count: {len(res)}')
 
     with open(output_file_path, 'w') as out_f:
@@ -350,6 +403,6 @@ if __name__ == "__main__":
 
     # download_repos(repo1_file_path, repo_dir_path, 0)
 
-    # filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
+    filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
 
-    # filter_data2(repo2_file_path, data1_file_path, data2_file_path)
+    filter_data2(repo2_file_path, data1_file_path, data2_file_path)

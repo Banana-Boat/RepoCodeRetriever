@@ -49,10 +49,6 @@ public class JavaRepoParser {
         ArrayList<JFile> jFiles = new ArrayList<>();
 
         File[] subFiles = Objects.requireNonNull(dir.listFiles());
-//        // process current directory with only one subdirectory, concat directory name, only generate one node.
-//        if (subFiles.length == 1 && subFiles[0].isDirectory()) {
-//            return extractDirectory(subFiles[0], dirName + "/" + subFiles[0].getName());
-//        }
 
         for (File file : subFiles) {
             if (file.isDirectory()) {
@@ -81,7 +77,6 @@ public class JavaRepoParser {
         return new JDirectory(
                 nodeCount,
                 dirName,
-                dir.getPath(),
                 jFiles,
                 subJDirectories
         );
@@ -93,7 +88,7 @@ public class JavaRepoParser {
             String signature;
             List<JMethod> methods;
             void setInfo(String signature, List<JMethod> methods) {
-                isFoundCls = true;
+                this.isFoundCls = true;
                 this.signature = signature;
                 this.methods = methods;
             }
@@ -130,9 +125,11 @@ public class JavaRepoParser {
                                         " implements " + coi.getImplementedTypes().toString()
                                                 .replace("[", "").replace("]", ""));
 
+
                         jClassContainer.setInfo(
                                 signature,
-                                extractMethods(coi));
+                                extractMethods(coi)
+                        );
                     }
                 }
             }, null);
@@ -141,7 +138,7 @@ public class JavaRepoParser {
             errorFileCount++;
         }
 
-        if(!jClassContainer.isFoundCls)
+        if(!jClassContainer.isFoundCls || jClassContainer.methods.size() == 0)
             return null;
 
         nodeCount++;
@@ -150,8 +147,7 @@ public class JavaRepoParser {
                 nodeCount,
                 file.getName(),
                 jClassContainer.signature,
-                jClassContainer.methods,
-                file.getPath()
+                jClassContainer.methods
         );
     }
 
@@ -170,7 +166,7 @@ public class JavaRepoParser {
                 continue;
             }
 
-            // ignore getter / setter
+            // ignore getter / setter of fields
             List<String> getterAndSetterMethods = new ArrayList<>();
             fields.forEach(field -> {
                 String fieldName = field.getVariable(0).getNameAsString();

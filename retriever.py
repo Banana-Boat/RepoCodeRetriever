@@ -5,15 +5,14 @@ import time
 from enum import Enum
 
 import tiktoken
-from constants import INPUT_SEPARATOR, LOG_SEPARATOR, RET_CLS_SYSTEM_PROMPT, RET_DIR_OR_FILE_SYSTEM_PROMPT, RET_MAX_OUTPUT_LENGTH, RET_METHOD_SYSTEM_PROMPT, RET_MAX_BACKTRACK_COUNT
+from constants import INPUT_SEPARATOR, LOG_SEPARATOR, RET_DIR_OR_FILE_SYSTEM_PROMPT, RET_MAX_OUTPUT_LENGTH, RET_METHOD_SYSTEM_PROMPT, RET_MAX_BACKTRACK_COUNT
 
 from openai_client import OpenAIClient
 
 
 class InferType(Enum):
     METHOD = 0
-    CLS = 1
-    DIR_OR_FILE = 2
+    DIR_OR_FILE = 1
 
 
 class Retriever:
@@ -50,8 +49,6 @@ class Retriever:
         # set system input text
         if type == InferType.METHOD:
             system_input_text = RET_METHOD_SYSTEM_PROMPT
-        elif type == InferType.CLS:
-            system_input_text = RET_CLS_SYSTEM_PROMPT
         else:
             system_input_text = RET_DIR_OR_FILE_SYSTEM_PROMPT
 
@@ -92,7 +89,7 @@ class Retriever:
                 f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nAn Error occurred during generation API call:\n{e}")
             return None
 
-    def _retrieve_in_cls(self, des: str, cls_sum_obj: dict) -> dict:
+    def _retrieve_in_file(self, des: str, file_sum_obj: dict) -> dict:
         '''
             Retrieve the method according to the description and the summary of the class.
             return {is_found: bool, is_error: bool}.
@@ -100,26 +97,25 @@ class Retriever:
         user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
 
         # check number of valid context
-        if len(cls_sum_obj['methods']) == 0:
+        if len(file_sum_obj['methods']) == 0:
             self.logger.info(
-                f"INSUFFICIENT CONTEXT{LOG_SEPARATOR}\nNode ID: {cls_sum_obj['id']}\nNo method in this class.")
+                f"INSUFFICIENT CONTEXT{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nNo method in this class.")
             return {
                 'is_found': False,
                 'is_error': False,
             }
 
         # concat summary of methods to context
-        for method_sum_obj in cls_sum_obj['methods']:
+        for method_sum_obj in file_sum_obj['methods']:
             temp_obj = {
                 'id': method_sum_obj['id'],
-                'name': method_sum_obj['name'],
                 'signature': method_sum_obj['signature'],
                 'summary': method_sum_obj['summary'],
             }
             temp_str = f"{temp_obj}\n"
             if not self._is_legal_input(RET_METHOD_SYSTEM_PROMPT, user_input_text + temp_str):
                 self.logger.info(
-                    f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {cls_sum_obj['id']}\nInput text length exceeds the model limit.")
+                    f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
                     'is_found': False,
                     'is_error': True,
@@ -129,7 +125,7 @@ class Retriever:
 
         # infer the method
         infer_obj = self._infer(
-            cls_sum_obj['id'], InferType.METHOD, user_input_text)
+            file_sum_obj['id'], InferType.METHOD, user_input_text)
 
         # error occurred during generation
         if infer_obj == None:
@@ -148,10 +144,10 @@ class Retriever:
 
         # get method_sum_obj according to infer_obj['id']
         method_sum_obj = next(
-            filter(lambda x: x['id'] == infer_obj['id'], cls_sum_obj['methods']), None)
+            filter(lambda x: x['id'] == infer_obj['id'], file_sum_obj['methods']), None)
         if method_sum_obj is None:
             self.logger.info(
-                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {cls_sum_obj['id']}\nThe method is not found in this class.")
+                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nThe method is not found in this class.")
             return {
                 'is_found': False,
                 'is_error': True,
@@ -164,79 +160,6 @@ class Retriever:
             'is_error': False,
         }
 
-    def _retrieve_in_file(self, des: str, file_sum_obj: dict) -> dict:
-        '''
-            Retrieve the method according to the description and the summary of the file.
-            return {is_found: bool, is_error: bool}.
-        '''
-        user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
-
-        # check number of valid context
-        if len(file_sum_obj['classes']) == 0:
-            self.logger.info(
-                f"INSUFFICIENT CONTEXT{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nNo class in this file.")
-            return {
-                'is_found': False,
-                'is_error': False,
-            }
-
-        # concat summary of classes to context
-        for cls_sum_obj in file_sum_obj['classes']:
-            temp_obj = {
-                'id': cls_sum_obj['id'],
-                'name': cls_sum_obj['name'],
-                'summary': cls_sum_obj['summary'],
-            }
-            temp_str = f"{temp_obj}\n"
-            if not self._is_legal_input(RET_CLS_SYSTEM_PROMPT, user_input_text + temp_str):
-                self.logger.info(
-                    f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nInput text length exceeds the model limit.")
-                return {
-                    'is_found': False,
-                    'is_error': True,
-                }
-
-            user_input_text += temp_str
-
-        # infer the class
-        infer_obj = self._infer(
-            file_sum_obj['id'], InferType.CLS, user_input_text)
-
-        # error occurred during generation
-        if infer_obj == None:
-            return {
-                'is_found': False,
-                'is_error': True,
-            }
-
-        # try ids in turn
-        for infer_id in infer_obj['ids'][:RET_MAX_BACKTRACK_COUNT]:
-            cls_sum_obj = next(
-                filter(lambda x: x['id'] == infer_id, file_sum_obj['classes']), None)
-            if cls_sum_obj is None:
-
-                self.logger.info(
-                    f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nThe class is not found in this file.")
-                return {
-                    'is_found': False,
-                    'is_error': True,
-                }
-
-            if self.is_first_try:
-                # add to most probable path if it is the first try
-                self.most_probable_path.append(cls_sum_obj['name'])
-
-            res = self._retrieve_in_cls(des, cls_sum_obj)
-
-            if res['is_found'] or res['is_error']:
-                self.result_path.append(cls_sum_obj['name'])
-                return res
-
-        return {
-            'is_found': False,
-            'is_error': False,
-        }
-
     def _retrieve_in_dir(self, des: str, dir_sum_obj: dict) -> dict:
         '''
             Retrieve the method according to the description and the summary of the directory.
@@ -246,7 +169,6 @@ class Retriever:
 
         # check number of valid context
         if len(dir_sum_obj['subdirectories']) == 0 and len(dir_sum_obj['files']) == 0:
-
             self.logger.info(
                 f"INSUFFICIENT CONTEXT{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nNo file and subdirectory in this directory.")
             return {
@@ -263,7 +185,6 @@ class Retriever:
             }
             temp_str = f"{temp_obj}\n"
             if not self._is_legal_input(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
-
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
@@ -282,7 +203,6 @@ class Retriever:
             }
             temp_str = f"{temp_obj}\n"
             if not self._is_legal_input(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
-
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
@@ -298,7 +218,6 @@ class Retriever:
 
         # error occurred during generation
         if infer_obj == None:
-
             return {
                 'is_found': False,
                 'is_error': True,
