@@ -27,7 +27,7 @@ class Summarizer:
         self.truncation_count = 0  # number of truncated nodes
         self.token_used_count = 0
 
-        self.SPECIAL_TOKEN_NUM = 5
+        self.SPECIAL_TOKEN_NUM = 30
 
     def _is_legal_openai_input(self, system_input_text: str, user_input_text: str, max_output_length: int) -> bool:
         '''
@@ -38,39 +38,44 @@ class Summarizer:
 
         return len(encoded_text) <= self.openai_client.max_number_of_tokens - max_output_length
 
-    def _is_legal_codellama_input(self, input_text: str, max_output_length: int) -> bool:
+    def _is_legal_codellama_input(self, system_input_text: str, user_input_text: str, max_output_length: int) -> bool:
         '''
             Check if the input text length is less than model limit.
         '''
         encoded = self.codellama_tokenizer.encode(
-            input_text, add_special_tokens=False, padding=False, truncation=False)
+            system_input_text + user_input_text,
+            add_special_tokens=False, padding=False, truncation=False)
 
         return len(encoded) <= self.ie_client.max_number_of_tokens - self.SPECIAL_TOKEN_NUM - max_output_length
 
-    def _build_codellama_input(self, node_id: int, prompt: str, context: str, max_output_length: int) -> str:
+    def _build_codellama_input(self, node_id: int, system_input_text: str, user_input_text: str, max_output_length: int) -> str:
         '''
             Concat promp and context, add special tokens, truncate if exceeds the token limit
         '''
-        input_text = f"{prompt}\n{INPUT_SEPARATOR}\n{context}"
 
-        if not self._is_legal_codellama_input(input_text, max_output_length):
-            max_input_length = self.ie_client.max_number_of_tokens - \
+        if not self._is_legal_codellama_input(system_input_text, user_input_text, max_output_length):
+            encoded_system_input = self.codellama_tokenizer.encode(
+                system_input_text,
+                add_special_tokens=False,
+                padding=False, truncation=False
+            )
+            max_user_input_length = self.ie_client.max_number_of_tokens - len(encoded_system_input) - \
                 self.SPECIAL_TOKEN_NUM - max_output_length
-            encoded = self.codellama_tokenizer.encode(
-                input_text,
+            encoded_user_input = self.codellama_tokenizer.encode(
+                user_input_text,
                 add_special_tokens=False,
                 padding=False, truncation=True,
-                max_length=max_input_length
+                max_length=max_user_input_length
             )
+            truncated_user_input_text = self.codellama_tokenizer.decode(
+                encoded_user_input, skip_special_tokens=False)
 
-            truncated_input_text = self.codellama_tokenizer.decode(
-                encoded, skip_special_tokens=False)
             self.logger.warning(
-                f"TRUNCATION{LOG_SEPARATOR}\nNode ID: {node_id}\nInput text exceeds the token limit, truncates from:\n{input_text}\nto:\n{truncated_input_text}")
+                f"TRUNCATION{LOG_SEPARATOR}\nNode ID: {node_id}\nInput text exceeds the token limit, truncates user input text from:\n{user_input_text}\nto:\n{truncated_user_input_text}")
 
-            input_text = truncated_input_text
+            user_input_text = truncated_user_input_text
 
-        return f"<s>[INST] {input_text} [/INST]"
+        return f"<s>[INST]<<SYS>>\n{system_input_text}\n<</SYS>>\n{user_input_text}\n[/INST]"
 
     def _openai_summarize(self, node_id: int, system_input_text: str, user_input_text: str, max_output_length: int) -> str:
         '''
@@ -84,7 +89,7 @@ class Summarizer:
         except Exception as e:
             self.gen_err_count += 1
             self.logger.error(
-                f"GENERATION FAILED{LOG_SEPARATOR}\nNode ID: {node_id}\nFailed to generate summary for:\n{e}")
+                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nFailed to generate summary for:\n{e}")
             return NO_SUMMARY
 
     def _codellama_summarize(self, node_id: int, input_text: str, max_output_length: int) -> dict:
@@ -102,7 +107,7 @@ class Summarizer:
         except Exception as e:
             self.gen_err_count += 1
             self.logger.error(
-                f"GENERATION FAILED{LOG_SEPARATOR}\nNode ID: {node_id}\nFailed to generate summary for:\n{e}")
+                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nFailed to generate summary for:\n{e}")
             return {
                 'id': node_id,
                 'input_text': input_text,
@@ -153,7 +158,7 @@ class Summarizer:
             method_objs: a list of method_obj
             return: a list of {id: int, name: str, signature: str, summary: str}
         '''
-        PROMPT = SUM_METHOD['prompt']
+        SYSTEM_PROMPT = SUM_METHOD['system_prompt']
         MAX_OUTPUT_LENGTH = SUM_METHOD['max_output_length']
 
         if len(method_objs) == 0:
@@ -163,10 +168,10 @@ class Summarizer:
         input_dicts = []
         for method_obj in method_objs:
             if method_obj["body"] != "":  # ignore methods that have no body
-                context = method_obj["signature"] + method_obj["body"]
+                user_input_text = method_obj["signature"] + method_obj["body"]
                 input_dicts.append({
                     'id': method_obj['id'],
-                    'input_text': self._build_codellama_input(method_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
+                    'input_text': self._build_codellama_input(method_obj['id'], SYSTEM_PROMPT, user_input_text, MAX_OUTPUT_LENGTH)
                 })
 
         # generate summary
@@ -207,16 +212,16 @@ class Summarizer:
             Summarize for class with the same name as the file according to its methods.
             methods in one class can be processed in batch.
         '''
-        PROMPT = SUM_FILE['prompt']
+        SYSTEM_PROMPT = SUM_FILE['system_prompt']
         MAX_OUTPUT_LENGTH = SUM_FILE['max_output_length']
 
         ignore_method_count = 0
-        context = file_obj["signature"] + " {\n"
+        user_input_text = file_obj["signature"] + " {\n"
 
         # handle all methods
         method_nodes = self._summarize_methods(file_obj["methods"])
 
-        # concat summary of methods to context
+        # concat summary of methods to user_input_text
         for idx, method_node in enumerate(method_nodes):
             tmp_str = f"\t{method_node['signature']};\n"
 
@@ -224,16 +229,16 @@ class Summarizer:
                 tmp_str = f"\t{method_node['signature']}; // {method_node['summary']}\n"
 
             # ignore methods that exceed the token limit
-            if not self._is_legal_codellama_input(f"{PROMPT}\n{INPUT_SEPARATOR}\n{context + tmp_str}", MAX_OUTPUT_LENGTH):
+            if not self._is_legal_codellama_input(SYSTEM_PROMPT, user_input_text + tmp_str, MAX_OUTPUT_LENGTH):
                 ignore_method_count = len(method_nodes) - idx
                 break
 
-            context += tmp_str
+            user_input_text += tmp_str
 
-        context += "}"
+        user_input_text += "}"
 
         input_text = self._build_codellama_input(
-            file_obj['id'], PROMPT, context, MAX_OUTPUT_LENGTH)
+            file_obj['id'], SYSTEM_PROMPT, user_input_text, MAX_OUTPUT_LENGTH)
         summary = self._codellama_summarize(
             file_obj['id'], input_text, MAX_OUTPUT_LENGTH)['output_text']
 
@@ -270,15 +275,13 @@ class Summarizer:
         ignore_sub_dir_count = 0
         ignore_file_count = 0
         user_input_text = f"Directory name: {dir_obj['name']}.\n{INPUT_SEPARATOR}\nInformation list:\n"
-        input_text = ""
-        context = f"Directory name: {dir_obj['name']}.\n"
 
         # handle all subdirectories recursively
         sub_dir_nodes = []
         for sub_dir_obj in dir_obj["subdirectories"]:
             sub_dir_nodes.append(self._summarize_dir(sub_dir_obj))
 
-        # concat summary of subdirectories
+        # concat summary of subdirectories to user_input_text
         if len(sub_dir_nodes) > 0:
             for idx, sub_dir_node in enumerate(sub_dir_nodes):
                 temp_obj = {
@@ -300,7 +303,7 @@ class Summarizer:
         for file_obj in dir_obj["files"]:
             file_nodes.append(self._summarize_file(file_obj))
 
-        # concat summary of files to context
+        # concat summary of files to user_input_text
         if len(file_nodes) > 0:
             for idx, file_node in enumerate(file_nodes):
                 temp_obj = {
@@ -334,7 +337,6 @@ class Summarizer:
             "id": dir_obj["id"],
             "name": dir_obj["name"],
             "summary": summary,
-            "path": dir_obj["path"],
             "subdirectories": sub_dir_nodes,
             "files": file_nodes,
         }

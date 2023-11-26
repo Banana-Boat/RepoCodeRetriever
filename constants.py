@@ -6,16 +6,16 @@ NO_SUMMARY = "*** No summary ***"
 # prompt and max output length of different hierarchies during summarization
 SUM_DIR = {
     "system_prompt": '''You will be provided with a directory name and a information list of subdirectories and Java class files in this directory in JSON format as follows:
-{"id": <PLACEHOLDER>, "name": <PLACEHOLDER>, "summary": <PLACEHOLDER>}
+{"id": <PLACEHOLDER>, "type": <PLACEHOLDER>, "name": <PLACEHOLDER>, "summary": <PLACEHOLDER>}
 You need to summarize the directory in about 100 words.''',
     "max_output_length": 200,
 }
 SUM_FILE = {
-    "prompt": "Summarize the Java class below in about 50 words, don't include examples and details.",
+    "system_prompt": "Summarize the Java class provided to you in about 50 words.",
     "max_output_length": 100,
 }
 SUM_METHOD = {
-    "prompt": "Summarize the Java method below in about 30 words.",
+    "system_prompt": "Summarize the Java method provided to you in about 30 words.",
     "max_output_length": 60,
 }
 

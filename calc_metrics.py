@@ -83,7 +83,11 @@ if __name__ == "__main__":
             if result_obj['is_error']:
                 pipeline_logger.error(
                     f"Error occured for id {result_obj['id']}")
-                exit(1)
+                continue
+
+            # test
+            if not result_obj['is_found']:
+                continue
 
             # get corresponding data object
             data_obj = next(
@@ -127,7 +131,9 @@ if __name__ == "__main__":
         precision = round(np.mean(precision_arr), 3)
         efficiency = round(np.mean(efficiency_arr), 3)
 
+        # pipeline_logger.info(
+        #     f"\nNumber of accuracy samples: {len(accuracy_arr)}\nNumber of efficiency samples: {len(efficiency_arr)}\nNumber of precision samples: {len(precision_arr)}")
         pipeline_logger.info(
-            f"\nAccuracy: {accuracy}\nPrecision: {precision}\nEfficiency: {efficiency}")
+            f"\nAccuracy: {accuracy}\nEfficiency: {efficiency}\nPrecision: {precision}")
 
     logging.shutdown()
