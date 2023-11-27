@@ -6,6 +6,7 @@ from dotenv import load_dotenv
 
 from openai_client import OpenAIClient
 from retriever import Retriever
+from sim_caculator import SimCaculator
 
 
 def create_loggers(ret_log_path: str) -> Tuple[logging.Logger, logging.Logger]:
@@ -73,9 +74,12 @@ if __name__ == "__main__":
     pipeline_logger.info(
         "Client for OpenAI was created successfully.")
 
+    # create similarity caculator
+    sim_calculator = SimCaculator()
+
     # retrieve method according to the description
     pipeline_logger.info("Start retrieval...")
-    retriever = Retriever(ret_logger, openai_client)
+    retriever = Retriever(ret_logger, openai_client, sim_calculator)
     with open(sum_out_path, "r") as f_sum_out:
         repo_sum_obj = json.loads(f_sum_out.read())
         result = retriever.retrieve_in_repo(query, repo_sum_obj)

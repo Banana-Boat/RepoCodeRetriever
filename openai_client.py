@@ -3,9 +3,6 @@ import random
 from time import sleep
 from typing import Tuple
 import requests
-from dotenv import load_dotenv
-
-from constants import RET_MAX_OUTPUT_LENGTH
 
 
 class OpenAIClient:
@@ -44,6 +41,7 @@ class OpenAIClient:
         '''
             return total_tokens and output_text
         '''
+
         error_msg = ""
 
         for _ in range(3):  # retry 3 times at most when a error occurred
@@ -87,38 +85,4 @@ class OpenAIClient:
 
 
 if __name__ == '__main__':
-    load_dotenv()
-
-    try:
-        openai_client = OpenAIClient()
-    except Exception as e:
-        print(e)
-        exit(1)
-
-    system_input_text = '''You will be provided with a description of a Java method in a Java code repository, as well as a information list of directories or files or Java classes/interfaces/enums in this repository in JSON format as follows:
-{"id": <PLACEHOLDER>, "name": <PLACEHOLDER>, "summary": <PLACEHOLDER>}
-A directory contains files and subdirectories, a file contains Java classes/interfaces/enums, and a Java class/interface/enum contains methods.
-You need to follow the steps below:
-- Step 1: Calculate the probability that these directories or files or Java classes/interfaces/enums contain this method directly or indirectly.
-NOTICE: If a directory or file contains interfaces or enums but no class, the probability should be the lowest.
-- Step 2: Sort them from high to low according to the probability, return the option ID list.
-- Step 3: Give a reason of about 50 words.
-You need to give a JSON object that can be parsed directly as follows:
-{"ids": [<PLACEHOLDER>...], "reason": <PLACEHOLDER>}
-'''
-
-    user_input_text = '''Method Description: Removes an element from the front end of the queue.
-##################################################################
-Information List:
-{'id': 8, 'name': 'YPipeBase.java', 'summary': '  The file `YPipeBase.java` contains an interface named `YPipeBase` that provides methods for writing, reading, and flushing data through a pipe. The interface defines methods for writing data to the pipe, undoing the last write, flushing the pipe, checking if there is data available to read, reading data from the pipe, and probing the pipe.'}
-{'id': 16, 'name': 'YPipe.java', 'summary': '  The YPipe.java file contains a Java class named YPipe that implements the YPipeBase interface and provides methods for writing, unwriting, flushing, and reading values from a queue. It also has a probe() method that checks if the queue is empty and returns the front element if it is not.'}
-{'id': 26, 'name': 'YQueue.java', 'summary': '  The YQueue class is a data structure that implements a queue using a circular array. It has methods to add and remove elements from the front and back of the queue, as well as methods to retrieve the front and back elements. The queue is implemented using a combination of two chunks, with the frontChunk containing the front elements and the backChunk containing the back elements. The frontPos and backPos variables keep track of the position.'}
-{'id': 55, 'name': 'Pipe.java', 'summary': '  The Pipe class is a bi-directional communication channel between two peers. It has methods for reading and writing messages, handling hiccups and termination requests, and setting high and low water marks. The class extends the ZObject class and implements the IPipeEvents interface. The IPipeEvents interface defines four methods that are called when certain events occur in a pipe.'}
-{'id': 63, 'name': 'DBuffer.java', 'summary': '  The DBuffer class is a double-ended queue (deque) that allows for efficient reading and writing of messages. It has methods for adding and retrieving messages, as well as a probe() method that allows for peeking at the front element of the queue without removing it. The class also has a checkRead() method that checks a boolean flag hasMsg and returns the result after acquiring and releasing a lock on a shared resource.'}
-{'id': 71, 'name': 'YPipeConflate.java', 'summary': '  The `YPipeConflate` class implements the `YPipeBase` interface and provides a buffered pipe for writing and reading values. It has methods for writing, returning `null`, flushing, and checking if the buffer has been read.'}
-'''
-
-    output = openai_client.generate(
-        system_input_text, user_input_text, RET_MAX_OUTPUT_LENGTH)
-
-    print(output)
+    pass

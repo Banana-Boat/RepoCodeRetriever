@@ -185,14 +185,16 @@ class Summarizer:
                 filter(lambda x: x['id'] == method_obj['id'], output_dicts), None)
 
             if output_dict != None:
+                summary = output_dict['output_text'].strip()
+
                 method_nodes.append({
                     'id': method_obj['id'],
                     'name': method_obj['name'],
-                    'summary': output_dict['output_text'],
+                    'summary': summary,
                     'signature': method_obj['signature'],
                 })
                 self.logger.info(
-                    f"METHOD{LOG_SEPARATOR}\nNode ID: {method_obj['id']}\nInput:\n{output_dict['input_text']}\nOutput:\n{output_dict['output_text']}")
+                    f"METHOD{LOG_SEPARATOR}\nNode ID: {method_obj['id']}\nInput:\n{output_dict['input_text']}\nOutput:\n{summary}")
             else:
                 method_nodes.append({
                     'id': method_obj['id'],
@@ -241,6 +243,7 @@ class Summarizer:
             file_obj['id'], SYSTEM_PROMPT, user_input_text, MAX_OUTPUT_LENGTH)
         summary = self._codellama_summarize(
             file_obj['id'], input_text, MAX_OUTPUT_LENGTH)['output_text']
+        summary = summary.strip()
 
         self.logger.info(
             f"FILE{LOG_SEPARATOR}\nNode ID: {file_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
@@ -323,6 +326,7 @@ class Summarizer:
         if valid_context_count != 0:
             summary = self._openai_summarize(
                 dir_obj['id'], SYSTEM_PROMPT, user_input_text, MAX_OUTPUT_LENGTH)
+            summary = summary.strip()
 
         self.logger.info(
             f"DIRECTORY{LOG_SEPARATOR}\nNode ID: {dir_obj['id']}\nSystem Input:\n{SYSTEM_PROMPT}\nUser Input:\n{user_input_text}\nOutput:\n{summary}")

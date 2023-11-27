@@ -120,9 +120,7 @@ def filter_data1(raw_dir_path, output_file_path):
                     'repo': obj['repo'],
                     'sha': obj['sha'],
                     'query': query,
-                    'func_name': obj['func_name'],
-                    'path': obj['path'],
-                    'url': obj['url'],
+                    'path': obj['path'] + '/' + obj['func_name'].split('.')[1],
                 })
 
                 cur_repo_path_set.add(obj['path'])
@@ -187,21 +185,21 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
     repo_set = set()
 
     with open(data_file_path, 'r') as f_data, open(repo_file_path, 'r') as f_repo_info:
-        datas = [json.loads(line) for line in f_data]
+        data_objs = [json.loads(line) for line in f_data]
         repo_infos = [json.loads(line) for line in f_repo_info]
 
-        for data in tqdm(datas):
-            if data['repo'] in repo_set:
+        for data_obj in tqdm(data_objs):
+            if data_obj['repo'] in repo_set:
                 continue
-            repo_set.add(data['repo'])
+            repo_set.add(data_obj['repo'])
 
             # get repo info
             repo_info = next(
-                filter(lambda x: x['name'] == data['repo'].split('/')[-1], repo_infos), None)
+                filter(lambda x: x['name'] == data_obj['repo'].split('/')[-1], repo_infos), None)
             if repo_info is None:
-                repo_info = get_repo_info_by_api(data['repo'])
+                repo_info = get_repo_info_by_api(data_obj['repo'])
                 if repo_info is None:
-                    print(f'Cannot get repo info: {data["repo"]}')
+                    print(f'Cannot get repo info: {data_obj["repo"]}')
                     return
 
             # limitation for star count
@@ -213,16 +211,12 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
             #     continue
 
             # cancat zip url
-            # https://github.com/soimort/you-get/blob/b746ac01c9f39de94cac2d56f665285b0523b974/src/you_get/extractors/youtube.py#L135-L143
             # https://github.com/soimort/you-get/archive/b746ac01c9f39de94cac2d56f665285b0523b974.zip
-            url_list = data['url'].split('/')
-            blob_idx = url_list.index('blob')
-            url_list[blob_idx] = 'archive'
-            zip_url = '/'.join(url_list[:blob_idx + 2]) + '.zip'
+            zip_url = f"https://github.com/{data_obj['repo']}/archive/{data_obj['sha']}.zip"
 
             respos.append({
-                'repo': data['repo'],
-                'sha': data['sha'],
+                'repo': data_obj['repo'],
+                'sha': data_obj['sha'],
                 'zip_url': zip_url,
                 'star': repo_info['stargazers_count'],
                 'size': repo_info['size']
@@ -283,7 +277,7 @@ def filter_repo2(repo_file_path, repo_root_path, output_file_path):
             out_f.write('\n')
 
 
-def has_true_path_arr(parse_out_path, true_path_str) -> bool:
+def has_true_path_arr(parse_obj, true_path_str) -> bool:
     def get_method_path(file_obj, path_str):
         if path_str[0] == '/':
             path_str = path_str[1:]
@@ -308,12 +302,7 @@ def has_true_path_arr(parse_out_path, true_path_str) -> bool:
 
         return False
 
-    if not os.path.exists(parse_out_path):
-        return False
-
-    with open(parse_out_path, "r") as f:
-        parse_result_obj = json.load(f)['mainDirectory']
-        return get_file_path(parse_result_obj, true_path_str)
+    return get_file_path(parse_obj['mainDirectory'], true_path_str)
 
 
 def filter_data2(repo_file_path, data_file_path, output_file_path):
@@ -328,24 +317,28 @@ def filter_data2(repo_file_path, data_file_path, output_file_path):
     idx = 0
     with open(data_file_path, 'r') as data_f:
         for line in data_f:
-            obj = json.loads(line)
+            data_obj = json.loads(line)
 
-            if obj['repo'] not in repo_set:
+            if data_obj['repo'] not in repo_set:
                 continue
 
             # java-repo-parser ignores the constructor / getter / setter / equals / toString / hashCode
             # so we need to filter them out
-            if not has_true_path_arr(
-                    os.path.join(
-                        './parse_temp', f"parse_out_{obj['repo'].split('/')[-1]}-{obj['sha']}.json"),
-                    f"{obj['path']}/{obj['func_name'].split('.')[1]}"
-            ):
-                no_true_path_count += 1
+            parse_out_path = os.path.join(
+                './parse_temp', f"parse_out_{data_obj['repo'].split('/')[-1]}-{data_obj['sha']}.json")
+            if not os.path.exists(parse_out_path):
+                print(f'Parse out file not exists: {parse_out_path}')
                 continue
+            with open(parse_out_path, 'r') as parse_f:
+                parse_obj = json.load(parse_f)
 
-            obj['id'] = idx
-            idx += 1
-            res.append(obj)
+                if not has_true_path_arr(parse_obj, data_obj['path']):
+                    no_true_path_count += 1
+                    continue
+
+                data_obj['id'] = idx
+                idx += 1
+                res.append(data_obj)
 
     # print(f'No true path count: {no_true_path_count}')
     print(f'Filtered data count: {len(res)}')
@@ -384,16 +377,91 @@ def download_repos(repo_file_path, repo_dir_path, start_idx=0):
                 return
 
 
+def get_datas_from_sum_out(sum_obj, repo_name, repo_sha):
+    NO_SUMMARY = "*** No summary ***"
+
+    def wonder_in_file(file_obj, path_str):
+        for method_obj in file_obj['methods']:
+            summary = method_obj['summary']
+            if summary == NO_SUMMARY:
+                continue
+
+            if summary[-1] != '.':
+                continue
+
+            summary = summary.replace(method_obj['name'], '')
+            summary = summary.replace('()', '')
+            summary = summary.replace('``', '')
+            summary = summary.replace(', ,', ',')
+            summary = summary.replace('\"\"', '')
+            summary = re.sub(r'\s+', ' ', summary)
+            summary = summary.strip()
+
+            res_path = "/".join(path_str.split('/')[1:])
+            datas.append({
+                'repo': repo_name,
+                'sha': repo_sha,
+                'query': summary,
+                'path': res_path + '/' + method_obj['name']
+            })
+
+    def wonder_in_dir(dir_obj, path_str):
+        for sub_dir_obj in dir_obj['subdirectories']:
+            wonder_in_dir(sub_dir_obj, f"{path_str}/{sub_dir_obj['name']}")
+
+        for file_obj in dir_obj['files']:
+            wonder_in_file(file_obj, f"{path_str}/{file_obj['name']}")
+
+    datas = []
+    wonder_in_dir(sum_obj, sum_obj['name'])
+
+    return datas
+
+
+def generate_data(repo_file_path, out_put_path):
+    datas = []
+    with open(repo_file_path, 'r') as repo_f:
+        repo_objs = [json.loads(line) for line in repo_f]
+
+        for repo_obj in tqdm(repo_objs):
+            sum_out_path = os.path.join('./sum_result', repo_obj['repo'].split(
+                '/')[-1], f"sum_out_{repo_obj['repo'].split('/')[-1]}.json")
+
+            if not os.path.exists(sum_out_path):
+                print(f'Sum out file not exists: {sum_out_path}')
+                continue
+
+            with open(sum_out_path, 'r') as sum_f:
+                sum_obj = json.load(sum_f)
+                temp_datas = get_datas_from_sum_out(
+                    sum_obj, repo_obj['repo'], repo_obj['sha'])
+                datas.extend(temp_datas)
+
+    random.shuffle(datas)
+    datas = datas[:100]
+    for idx, data in enumerate(datas):
+        data['id'] = idx
+
+    print(f'Generated data count: {len(datas)}')
+
+    with open(out_put_path, 'w') as out_f:
+        for data in datas:
+            json.dump(data, out_f)
+            out_f.write('\n')
+
+
 if __name__ == "__main__":
     raw_dir_path = os.path.join(os.getcwd(), 'raw')
     repo_dir_path = os.path.join(os.getcwd(), 'repo')
     filtered_dir_path = os.path.join(os.getcwd(), 'filtered')
+    generated_dir_path = os.path.join(os.getcwd(), 'generated')
 
     data1_file_path = os.path.join(filtered_dir_path, 'data1.jsonl')
     repo_info_file_path = os.path.join(filtered_dir_path, 'repo_info.jsonl')
     repo1_file_path = os.path.join(filtered_dir_path, 'repo1.jsonl')
     repo2_file_path = os.path.join(filtered_dir_path, 'repo2.jsonl')
     data2_file_path = os.path.join(filtered_dir_path, 'data2.jsonl')
+    generated_data_file_path = os.path.join(generated_dir_path, 'data.jsonl')
 
     # filter_data1(raw_dir_path, data1_file_path)
 
@@ -403,6 +471,8 @@ if __name__ == "__main__":
 
     # download_repos(repo1_file_path, repo_dir_path, 0)
 
-    filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
+    # filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
 
-    filter_data2(repo2_file_path, data1_file_path, data2_file_path)
+    # filter_data2(repo2_file_path, data1_file_path, data2_file_path)
+
+    generate_data(repo2_file_path, generated_data_file_path)

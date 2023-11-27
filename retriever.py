@@ -8,6 +8,7 @@ import tiktoken
 from constants import INPUT_SEPARATOR, LOG_SEPARATOR, RET_DIR_OR_FILE_SYSTEM_PROMPT, RET_MAX_OUTPUT_LENGTH, RET_METHOD_SYSTEM_PROMPT, RET_MAX_BACKTRACK_COUNT
 
 from openai_client import OpenAIClient
+from sim_caculator import SimCaculator
 
 
 class InferType(Enum):
@@ -16,13 +17,15 @@ class InferType(Enum):
 
 
 class Retriever:
-    def __init__(self, logger: logging.Logger, openai_client: OpenAIClient):
+    def __init__(self, logger: logging.Logger, openai_client: OpenAIClient, sim_caculator: SimCaculator):
         self.logger = logger
-        self.tokenizer = tiktoken.encoding_for_model(openai_client.model_name)
 
+        self.openai_tokenizer = tiktoken.encoding_for_model(
+            openai_client.model_name)
         self.openai_client = openai_client
-
         self.token_used_count = 0
+
+        self.sim_caculator = sim_caculator
 
         self.result_path = []  # result path, reset every retrieval
         self.most_probable_path = []  # most probable path, reset every retrieval
@@ -33,7 +36,7 @@ class Retriever:
         '''
             Check if the input text length exceeds the model limit.
         '''
-        encoded_text = self.tokenizer.encode(
+        encoded_text = self.openai_tokenizer.encode(
             system_input_text + user_input_text)
 
         return len(encoded_text) <= self.openai_client.max_number_of_tokens - RET_MAX_OUTPUT_LENGTH
@@ -41,7 +44,7 @@ class Retriever:
     def _infer(self, node_id: int, type: InferType, user_input_text: str) -> dict:
         '''
             Generate inference through API calls.
-            return: {id: int | None, ids: List[int] | None, reason: str} | None
+            return: {id: int | None, ids: List[int] | None} | None
             If an error occurred during generation, return None.
         '''
         self.ret_times += 1
@@ -67,11 +70,11 @@ class Retriever:
                 # check if the inference result is formatted
                 infer_obj = json.loads(json_text)
                 if type == InferType.METHOD:
-                    if 'id' not in infer_obj or 'reason' not in infer_obj or \
+                    if 'id' not in infer_obj or \
                             not isinstance(infer_obj['id'], int):
                         raise Exception()
                 else:
-                    if 'ids' not in infer_obj or 'reason' not in infer_obj or \
+                    if 'ids' not in infer_obj or \
                             not isinstance(infer_obj['ids'], list) or \
                             not all(isinstance(x, int) for x in infer_obj['ids']):
                         raise Exception()
@@ -105,14 +108,26 @@ class Retriever:
                 'is_error': False,
             }
 
-        # concat summary of methods to context
+        # get information list of method
+        infos = []
         for method_sum_obj in file_sum_obj['methods']:
-            temp_obj = {
+            infos.append({
                 'id': method_sum_obj['id'],
-                'signature': method_sum_obj['signature'],
+                'name': method_sum_obj['name'],
                 'summary': method_sum_obj['summary'],
-            }
-            temp_str = f"{temp_obj}\n"
+            })
+
+        # calculate similarities, and sort infos according to similarity
+        summaries = [info['summary'] for info in infos]
+        similarities = self.sim_caculator.calc_similarities(des, summaries)
+
+        for i, info in enumerate(infos):
+            info['similarity'] = similarities[i]
+        infos.sort(key=lambda x: x['similarity'], reverse=True)
+
+        # concat info list to context.
+        for info in infos[:15]:
+            temp_str = f"{info}\n"
             if not self._is_legal_input(RET_METHOD_SYSTEM_PROMPT, user_input_text + temp_str):
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nInput text length exceeds the model limit.")
@@ -176,32 +191,33 @@ class Retriever:
                 'is_error': False,
             }
 
-        # concat summary of subdirectories to context
+        # get information list of subdirectory and file
+        infos = []
         for sub_dir_sum_obj in dir_sum_obj['subdirectories']:
-            temp_obj = {
+            infos.append({
                 'id': sub_dir_sum_obj['id'],
                 'name': sub_dir_sum_obj['name'],
                 'summary': sub_dir_sum_obj['summary'],
-            }
-            temp_str = f"{temp_obj}\n"
-            if not self._is_legal_input(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
-                self.logger.info(
-                    f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nInput text length exceeds the model limit.")
-                return {
-                    'is_found': False,
-                    'is_error': True,
-                }
+            })
 
-            user_input_text += temp_str
-
-        # concat summary of files to context
         for file_sum_obj in dir_sum_obj['files']:
-            temp_obj = {
+            infos.append({
                 'id': file_sum_obj['id'],
                 'name': file_sum_obj['name'],
                 'summary': file_sum_obj['summary'],
-            }
-            temp_str = f"{temp_obj}\n"
+            })
+
+        # calculate similarities, and sort infos according to similarity
+        summaries = [info['summary'] for info in infos]
+        similarities = self.sim_caculator.calc_similarities(des, summaries)
+
+        for i, info in enumerate(infos):
+            info['similarity'] = similarities[i]
+        infos.sort(key=lambda x: x['similarity'], reverse=True)
+
+        # concat info list to context.
+        for info in infos[:15]:
+            temp_str = f"{info}\n"
             if not self._is_legal_input(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nInput text length exceeds the model limit.")
