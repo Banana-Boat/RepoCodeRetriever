@@ -117,17 +117,24 @@ class Retriever:
                 'summary': method_sum_obj['summary'],
             })
 
-        # calculate similarities, and sort infos according to similarity
-        summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(des, summaries)
+        # if info list is too long, narrow list according to similarity
+        MAX_INFO_LIST_LENGTH = 25
+        if len(infos) > MAX_INFO_LIST_LENGTH:
+            summaries = [info['summary'] for info in infos]
+            similarities = self.sim_caculator.calc_similarities(des, summaries)
 
-        for i, info in enumerate(infos):
-            info['similarity'] = similarities[i]
-        infos.sort(key=lambda x: x['similarity'], reverse=True)
+            for i, info in enumerate(infos):
+                info['similarity'] = similarities[i]
+            infos.sort(key=lambda x: x['similarity'], reverse=True)
 
         # concat info list to context.
-        for info in infos[:15]:
-            temp_str = f"{info}\n"
+        for info in infos[:MAX_INFO_LIST_LENGTH]:
+            temp_obj = {
+                'id': info['id'],
+                'name': info['name'],
+                'summary': info['summary'],
+            }
+            temp_str = f"{temp_obj}\n"
             if not self._is_legal_input(RET_METHOD_SYSTEM_PROMPT, user_input_text + temp_str):
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nInput text length exceeds the model limit.")
@@ -207,17 +214,25 @@ class Retriever:
                 'summary': file_sum_obj['summary'],
             })
 
-        # calculate similarities, and sort infos according to similarity
-        summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(des, summaries)
+        # if info list is too long, narrow list according to similarity
+        MAX_INFO_LIST_LENGTH = 25
+        if len(infos) > MAX_INFO_LIST_LENGTH:
+            summaries = [info['summary'] for info in infos]
+            similarities = self.sim_caculator.calc_similarities(des, summaries)
 
-        for i, info in enumerate(infos):
-            info['similarity'] = similarities[i]
-        infos.sort(key=lambda x: x['similarity'], reverse=True)
+            for i, info in enumerate(infos):
+                info['similarity'] = similarities[i]
+            infos.sort(key=lambda x: x['similarity'], reverse=True)
 
         # concat info list to context.
-        for info in infos[:15]:
-            temp_str = f"{info}\n"
+        for info in infos[:MAX_INFO_LIST_LENGTH]:
+            temp_obj = {
+                'id': info['id'],
+                'name': info['name'],
+                'summary': info['summary'],
+                # 'similarity': info['similarity'],
+            }
+            temp_str = f"{temp_obj}\n"
             if not self._is_legal_input(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nInput text length exceeds the model limit.")

@@ -2,6 +2,7 @@ import os
 import random
 from time import sleep
 from typing import Tuple
+from dotenv import load_dotenv
 import requests
 
 
@@ -44,7 +45,7 @@ class OpenAIClient:
 
         error_msg = ""
 
-        for _ in range(3):  # retry 3 times at most when a error occurred
+        for _ in range(5):  # retry 3 times at most when a error occurred
             try:
                 messages = [{
                     "role": "user",
@@ -85,4 +86,17 @@ class OpenAIClient:
 
 
 if __name__ == '__main__':
-    pass
+    load_dotenv()
+
+    try:
+        openai_client = OpenAIClient()
+    except Exception as e:
+        print(e)
+        exit(-1)
+
+    system_input_text = "Summarize the Java class provided to you in about 60 words."
+
+    user_input_text = ''''''
+
+    print(openai_client.generate(
+        system_input_text, user_input_text, 120))

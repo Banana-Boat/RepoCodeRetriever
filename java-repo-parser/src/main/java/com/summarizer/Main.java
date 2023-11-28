@@ -2,6 +2,7 @@ package com.summarizer;
 
 import com.alibaba.fastjson.JSON;
 import com.github.javaparser.ParserConfiguration;
+import com.summarizer.pojo.JRepo;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
 import picocli.CommandLine;
@@ -40,9 +41,16 @@ public class Main implements Runnable {
         JavaRepoParser parser = new JavaRepoParser(getLanguageLevel());
 
         // parse and write result
-        try (FileWriter fw = new FileWriter(outputPath)) {
-            String json = JSON.toJSONString(parser.extractRepo(dir));
-            fw.write(json);
+        try {
+            JRepo jRepo = parser.extractRepo(dir);
+
+            try (FileWriter fw = new FileWriter(outputPath)) {
+                String json = JSON.toJSONString(jRepo);
+                fw.write(json);
+            } catch (Exception e) {
+                e.printStackTrace();
+                System.exit(1);
+            }
         } catch (Exception e) {
             e.printStackTrace();
             System.exit(1);

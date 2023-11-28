@@ -15,8 +15,11 @@ import java.util.Objects;
 public class JavaRepoParser {
     private ParserConfiguration.LanguageLevel languageLevel;
     private int nodeCount = 0; // number of nodes
-    private int dirCount = 0; // number of directories
-    private int fileCount = 0; // number of files
+    private int maxSubDirCount = 0; // max number of subdirectories in a directory
+    private int maxFileCount = 0; // max number of files in a directory
+    private int maxSubDirAndFileCount = 0; // max number of subdirectories and files in a directory
+    private int totalDirCount = 0; // total number of directories
+    private int totalFileCount = 0; // total number of files
     private int errorFileCount = 0; // number of parsing error file
     public List<String> logs = new ArrayList<>(); // parse logs
 
@@ -30,14 +33,16 @@ public class JavaRepoParser {
 
         JDirectory jDirectory = extractDirectory(dir, dir.getName());
 
-        logs.add(0, "Number of node：" + nodeCount +
-                        "\nNumber of directories containing java file：" + dirCount +
-                        "\nNumber of java files：" + fileCount +
-                        "\nNumber of parsing error files：" + errorFileCount);
+        logs.add(0, "Number of parsing error files：" + errorFileCount);
 
         return new JRepo(
                 jDirectory,
-                nodeCount
+                nodeCount,
+                maxSubDirCount,
+                maxFileCount,
+                maxSubDirAndFileCount,
+                totalDirCount,
+                totalFileCount
         );
     }
 
@@ -73,7 +78,11 @@ public class JavaRepoParser {
             return null;
 
         nodeCount++;
-        dirCount++;
+        totalDirCount++;
+        totalFileCount += jFiles.size();
+        maxSubDirCount = Math.max(maxSubDirCount, subJDirectories.size());
+        maxFileCount = Math.max(maxFileCount, jFiles.size());
+        maxSubDirAndFileCount = Math.max(maxSubDirAndFileCount, subJDirectories.size() + jFiles.size());
         return new JDirectory(
                 nodeCount,
                 dirName,
@@ -134,15 +143,14 @@ public class JavaRepoParser {
                 }
             }, null);
         } catch (Exception e) {
-            logs.add(file.getPath() + " can't be parsed for:\n" + e.getMessage());
-            errorFileCount++;
+            System.out.println(file.getPath() + " can't be parsed for:\n" + e.getMessage());
+            throw new RuntimeException(e);
         }
 
         if(!jClassContainer.isFoundCls || jClassContainer.methods.size() == 0)
             return null;
 
         nodeCount++;
-        fileCount++;
         return new JFile(
                 nodeCount,
                 file.getName(),

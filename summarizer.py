@@ -99,10 +99,20 @@ class Summarizer:
             the purpose of returning input_text is to facilitate logging
         '''
         try:
+            output_text = self.ie_client.generate(
+                input_text, max_output_length)
+
+            output_text = output_text.strip()
+            output_text = output_text.replace('\n', ' ')
+            # if the last sentence is not complete, truncate it
+            last_dot_index = output_text.rfind('.')
+            if last_dot_index != -1:
+                output_text = output_text[:last_dot_index + 1]
+
             return {
                 'id': node_id,
                 'input_text': input_text,
-                'output_text': self.ie_client.generate(input_text, max_output_length)
+                'output_text': output_text
             }
         except Exception as e:
             self.gen_err_count += 1
@@ -185,7 +195,7 @@ class Summarizer:
                 filter(lambda x: x['id'] == method_obj['id'], output_dicts), None)
 
             if output_dict != None:
-                summary = output_dict['output_text'].strip()
+                summary = output_dict['output_text']
 
                 method_nodes.append({
                     'id': method_obj['id'],
@@ -231,7 +241,7 @@ class Summarizer:
                 tmp_str = f"\t{method_node['signature']}; // {method_node['summary']}\n"
 
             # ignore methods that exceed the token limit
-            if not self._is_legal_codellama_input(SYSTEM_PROMPT, user_input_text + tmp_str, MAX_OUTPUT_LENGTH):
+            if not self._is_legal_openai_input(SYSTEM_PROMPT, user_input_text + tmp_str, MAX_OUTPUT_LENGTH):
                 ignore_method_count = len(method_nodes) - idx
                 break
 
@@ -239,14 +249,11 @@ class Summarizer:
 
         user_input_text += "}"
 
-        input_text = self._build_codellama_input(
+        summary = self._openai_summarize(
             file_obj['id'], SYSTEM_PROMPT, user_input_text, MAX_OUTPUT_LENGTH)
-        summary = self._codellama_summarize(
-            file_obj['id'], input_text, MAX_OUTPUT_LENGTH)['output_text']
-        summary = summary.strip()
 
         self.logger.info(
-            f"FILE{LOG_SEPARATOR}\nNode ID: {file_obj['id']}\nInput:\n{input_text}\nOutput:\n{summary}")
+            f"FILE{LOG_SEPARATOR}\nNode ID: {file_obj['id']}\nSystem Input:\n{SYSTEM_PROMPT}\nUser Input:\n{user_input_text}\nOutput:\n{summary}")
         if ignore_method_count != 0:
             self.logger.info(
                 f"Number of ignored method: {ignore_method_count}")

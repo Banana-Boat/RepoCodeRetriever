@@ -13,6 +13,80 @@ def parse_repo(repo_path, output_path, log_path) -> int:
         f"java -jar ../java-repo-parser.jar -r={repo_path} -o={output_path} -l={log_path}")
 
 
+exclude_repo_set = set([
+    'streamsets/datacollector',
+    'DataSketches/sketches-core',
+    'xiancloud/xian',
+    'apache/incubator-gobblin',
+    'box/box-java-sdk',
+    'alibaba/jstorm',
+    'line/armeria',
+    'jenkinsci/jenkins',
+    'aws/aws-sdk-java',
+    'Whiley/WhileyCompilerCollection',
+    'javalite/activejdbc',
+    'apache/incubator-zipkin',
+    'banq/jdonframework',
+    'sshtools/j2ssh-maverick',
+    'BranchMetrics/android-branch-deep-linking',
+    'OpenLiberty/open-liberty',
+    'alkacon/opencms-core',
+    'google/j2objc',
+    'hazelcast/hazelcast',
+    'liferay/com-liferay-commerce',
+    'apache/incubator-druid',
+    'deeplearning4j/deeplearning4j',
+    'jamesagnew/hapi-fhir',
+    'att/AAF',
+    'Pi4J/pi4j',
+    'fcrepo4/fcrepo4',
+    'b3log/latke',
+    'Koekiebox-PTY-LTD/Fluid',
+    'Red5/red5-server-common',
+    'twitter/elephant-bird',
+    'box/box-android-sdk',
+    'beanshell/beanshell',
+    'Impetus/Kundera',
+    'Hygieia/Hygieia',
+    'GoogleCloudPlatform/bigdata-interop',
+    'VoltDB/voltdb',
+    'groovy/groovy-core',
+    'Samsung/GearVRf',
+    'infinispan/infinispan',
+    'lucee/Lucee',
+    'apache/groovy',
+    'jeremylong/DependencyCheck',
+    'Alluxio/alluxio',
+    'Stratio/stratio-cassandra',
+    'kite-sdk/kite',
+    'rhuss/jolokia',
+    'sarl/sarl',
+    'apache/flink',
+    'pravega/pravega',
+    'mozilla/rhino',
+    'raphw/byte-buddy',
+    'paypal/SeLion',
+    'stratosphere/stratosphere',
+    'graknlabs/grakn',
+    'mongodb/mongo-java-driver',
+    'jenetics/jenetics',
+    'RestComm/sip-servlets',
+    'molgenis/molgenis',
+    'google/guava',
+    'playn/playn',
+    'h2oai/h2o-2',
+    'atomix/atomix',
+    'Sciss/abc4j',
+    'deeplearning4j/nd4j',
+    'pushbit/sprockets-android',
+    'Stratio/bdt',
+    'elki-project/elki',
+    'pippo-java/pippo',
+    'rometools/rome',
+    'Graylog2/graylog2-server',
+])
+
+
 def filter_data1(raw_dir_path, output_file_path):
     res = []
     filtered_repo_data = []  # list contains filtered data in one repo
@@ -30,36 +104,15 @@ def filter_data1(raw_dir_path, output_file_path):
                 raw_data_count += 1
                 obj = json.loads(line)
 
-                # exclude repos
-                if obj['repo'] == 'streamsets/datacollector' or \
-                        obj['repo'] == 'DataSketches/sketches-core' or \
-                        obj['repo'] == 'xiancloud/xian' or \
-                        obj['repo'] == 'apache/incubator-gobblin' or \
-                        obj['repo'] == 'box/box-java-sdk' or \
-                        obj['repo'] == 'alibaba/jstorm' or \
-                        obj['repo'] == 'line/armeria' or \
-                        obj['repo'] == 'jenkinsci/jenkins' or \
-                        obj['repo'] == 'aws/aws-sdk-java' or \
-                        obj['repo'] == 'Whiley/WhileyCompilerCollection' or \
-                        obj['repo'] == 'javalite/activejdbc' or \
-                        obj['repo'] == 'apache/incubator-zipkin' or \
-                        obj['repo'] == 'banq/jdonframework' or \
-                        obj['repo'] == 'sshtools/j2ssh-maverick' or \
-                        obj['repo'] == 'BranchMetrics/android-branch-deep-linking' or \
-                        obj['repo'] == 'OpenLiberty/open-liberty' or \
-                        obj['repo'] == 'alkacon/opencms-core' or \
-                        obj['repo'] == 'google/j2objc' or \
-                        obj['repo'] == 'hazelcast/hazelcast' or \
-                        obj['repo'] == 'liferay/com-liferay-commerce' or \
-                        obj['repo'] == 'apache/incubator-druid' or \
-                        obj['repo'] == 'deeplearning4j/deeplearning4j' or \
-                        obj['repo'] == 'jamesagnew/hapi-fhir' or \
-                        obj['repo'] == 'graknlabs/grakn':
+                # exclude repos(can't be parsed / too large / renamed / difficult to understand)
+                if obj['repo'] in exclude_repo_set:
                     continue
+
+                # exclude repos
 
                 if obj['repo'] + obj['sha'] != cur_repo:
                     # limitation for data count in one repo
-                    if len(filtered_repo_data) >= 50:
+                    if len(filtered_repo_data) >= 80:
                         res.extend(filtered_repo_data)
                         repo_set.add(cur_repo)
 
@@ -71,12 +124,12 @@ def filter_data1(raw_dir_path, output_file_path):
                 if obj['path'].split('/')[-1].split('.')[0] != obj['func_name'].split('.')[0]:
                     continue
 
-                # limitation for same path in one repo
-                if obj['path'] in cur_repo_path_set:
+                # limitation for same path(file path + method name) in one repo
+                if obj['path'] + '/' + obj['func_name'].split('.')[1] in cur_repo_path_set:
                     continue
 
                 # limitation for directory hierarchy in path field
-                if obj['path'].count('/') < 3 or obj['path'].count('/') > 9:
+                if obj['path'].count('/') < 3 or obj['path'].count('/') > 10:
                     continue
 
                 # limitation for query's token count in docstring_tokens field
@@ -86,8 +139,8 @@ def filter_data1(raw_dir_path, output_file_path):
                 # limitation for content of query in docstring field
                 if not obj['docstring'].isascii():
                     continue
-                if "TODO:" in obj['docstring'] or \
-                    "NOTE:" in obj['docstring'] or \
+                if "TODO" in obj['docstring'] or \
+                    "NOTE" in obj['docstring'] or \
                     "/*" in obj['docstring'] or \
                     "(non-Javadoc)" in obj['docstring'] or \
                     "https://" in obj['docstring'] or \
@@ -102,28 +155,31 @@ def filter_data1(raw_dir_path, output_file_path):
                 query = re.sub(r'\{@link([^\}]*)\}', r'\1', query)
                 query = re.sub(r'\{@code([^\}]*)\}', r'\1', query)
                 query = re.sub(r'$\{([^\}]*)\}', r'\1', query)
+                query = re.sub(r'\(e\.g\.[^\)]*\)', '', query)
+                query = re.sub(r'\(i\.e\.[^\)]*\)', '', query)
                 query = re.sub(r'@.*', '', query)
-                query = re.sub(r'\..*', '.', query)
+                query = query.split('.')[0] + '.'
                 query = query.replace('\n', ' ')
                 query = re.sub(r'\s+', ' ', query)
                 query = query.strip()
 
                 # ignore query which is too short or too long
-                if len(query) < 30 or len(query) > 150:
+                if len(query) < 50 or len(query) > 200:
                     continue
 
                 # ignore duplicate query in one repo
                 if query in [item['query'] for item in filtered_repo_data]:
                     continue
 
+                path = obj['path'] + '/' + obj['func_name'].split('.')[1]
                 filtered_repo_data.append({
                     'repo': obj['repo'],
-                    'sha': obj['sha'],
                     'query': query,
-                    'path': obj['path'] + '/' + obj['func_name'].split('.')[1],
+                    'path': path,
+                    'sha': obj['sha'],
                 })
 
-                cur_repo_path_set.add(obj['path'])
+                cur_repo_path_set.add(path)
 
     print('Filtered data count: {}\nRatio: {}\nRepo count: {}'.format(
         len(res), len(res) / raw_data_count, len(repo_set)))
@@ -135,7 +191,7 @@ def filter_data1(raw_dir_path, output_file_path):
 
 
 def get_repo_info_by_api(repo_name: str):
-    for _ in range(2):
+    for _ in range(3):
         try:
             res = requests.get(
                 f"https://api.github.com/repos/{repo_name}")
@@ -148,36 +204,10 @@ def get_repo_info_by_api(repo_name: str):
         except Exception as e:
             print(f'Error: {repo_name}')
             print(e)
-            sleep(random.randint(5, 15))
+            sleep(random.randint(10, 20))
             continue
 
     return None
-
-
-def get_repo_infos(data_file_path, repo_file_path, start_idx=0):
-    repo_set = set()
-    repo_info_list = []
-
-    with open(repo_file_path, 'r') as f_repo:
-        repo_info_list = [json.loads(line) for line in f_repo]
-
-    with open(data_file_path, 'r') as f_jsonl, open(repo_file_path, 'a') as f_out:
-        repo_objs = [json.loads(line) for line in f_jsonl]
-        for idx, repo_obj in enumerate(tqdm(repo_objs[start_idx:])):
-            if repo_obj['repo'] in repo_set:
-                continue
-            repo_set.add(repo_obj['repo'])
-
-            # check if repo info is already in repo_info_list
-            repo_info_obj = next(
-                filter(lambda x: x['full_name'] == repo_obj['repo'], repo_info_list), None)
-            if repo_info_obj is None:
-                repo_info = get_repo_info_by_api(repo_obj['repo'])
-                if repo_info is None:
-                    print(f'Stop at {idx + start_idx}')
-                    return
-
-                f_out.write(json.dumps(repo_info) + '\n')
 
 
 def filter_repo1(data_file_path, repo_file_path, output_file_path):
@@ -202,13 +232,12 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
                     print(f'Cannot get repo info: {data_obj["repo"]}')
                     return
 
-            # limitation for star count
-            if repo_info['stargazers_count'] < 30:
-                continue
+                with open(repo_file_path, 'a') as f_out:
+                    f_out.write(json.dumps(repo_info) + '\n')
 
-            # limitation for size
-            # if repo_info['size'] > 100000:
-            #     continue
+            # # limitation for star count
+            if repo_info['stargazers_count'] < 100:
+                continue
 
             # cancat zip url
             # https://github.com/soimort/you-get/archive/b746ac01c9f39de94cac2d56f665285b0523b974.zip
@@ -217,9 +246,9 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
             respos.append({
                 'repo': data_obj['repo'],
                 'sha': data_obj['sha'],
-                'zip_url': zip_url,
                 'star': repo_info['stargazers_count'],
-                'size': repo_info['size']
+                'description': repo_info['description'],
+                'zip_url': zip_url,
             })
 
     print(f'Filtered repo count: {len(respos)}')
@@ -250,22 +279,35 @@ def filter_repo2(repo_file_path, repo_root_path, output_file_path):
             # if repo is already parsed, skip it
             if f"parse_out_{repo_dir_name}.json" not in temp_file_list:
                 if (0 != parse_repo(repo_dir_path, parse_out_path, parse_log_path)):
-                    print("Failed to parse repo.")
-                    return
+                    print(f"Failed to parse repo: {repo_obj['repo']}")
+                    continue
 
             with open(parse_out_path, 'r') as f_parse_out:
                 try:
                     parse_obj = json.loads(f_parse_out.read())
                 except Exception as e:
-                    print(f'Error: {repo_dir_name}')
+                    print(f"Failed to parse json: {parse_out_path}")
                     print(e)
                     return
                 node_count = parse_obj['nodeCount']
+                max_sub_dir_count = parse_obj['maxSubDirCount']
+                max_file_count = parse_obj['maxFileCount']
+                max_sub_dir_and_file_count = parse_obj['maxSubDirAndFileCount']
                 # print(
                 #     f"Repo: {repo_obj['repo']}, Node count: {node_count}")
-
-                if node_count > 1300:
+                if node_count > 2000:
                     continue
+
+                if max_sub_dir_count > 5:
+                    continue
+
+                if max_sub_dir_and_file_count > 50:
+                    continue
+
+                repo_obj['node_count'] = node_count
+                repo_obj['max_sub_dir_count'] = max_sub_dir_count
+                repo_obj['max_file_count'] = max_file_count
+                repo_obj['max_sub_dir_and_file_count'] = max_sub_dir_and_file_count
 
                 repos.append(repo_obj)
 
@@ -465,14 +507,12 @@ if __name__ == "__main__":
 
     # filter_data1(raw_dir_path, data1_file_path)
 
-    # get_repo_infos(data1_file_path, repo_info_file_path, 0)
-
     # filter_repo1(data1_file_path, repo_info_file_path, repo1_file_path)
 
     # download_repos(repo1_file_path, repo_dir_path, 0)
 
-    # filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
+    filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
 
-    # filter_data2(repo2_file_path, data1_file_path, data2_file_path)
+    filter_data2(repo2_file_path, data1_file_path, data2_file_path)
 
-    generate_data(repo2_file_path, generated_data_file_path)
+    # generate_data(repo2_file_path, generated_data_file_path)
