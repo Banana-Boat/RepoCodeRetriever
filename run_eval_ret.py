@@ -13,7 +13,7 @@ from sim_caculator import SimCaculator
 if __name__ == "__main__":
     start_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
-    data_file_path = "./eval_data/filtered/data2.jsonl"
+    data_file_path = "./eval_data/filtered/data_final.jsonl"
     sum_result_root_path = "./eval_data/sum_result"
     ret_log_dir_path = "./eval_data/ret_log"
     ret_result_file_path = "./eval_data/ret_result.jsonl"

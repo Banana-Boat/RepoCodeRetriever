@@ -57,7 +57,7 @@ def get_true_path_arr(sum_obj, true_path_str) -> List[str]:
 
 
 if __name__ == "__main__":
-    data_file_path = "./eval_data/filtered/data2.jsonl"
+    data_file_path = "./eval_data/filtered/data_final.jsonl"
     ret_result_file_path = "./eval_data/ret_result.jsonl"
     sum_result_root_path = "./eval_data/sum_result"
 

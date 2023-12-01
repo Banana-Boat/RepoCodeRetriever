@@ -84,6 +84,14 @@ exclude_repo_set = set([
     'pippo-java/pippo',
     'rometools/rome',
     'Graylog2/graylog2-server',
+    'datastax/java-driver',
+    'kiegroup/jbpm',
+    'LearnLib/learnlib',
+    'jooby-project/jooby',
+    'googleapis/cloud-bigtable-client',
+    'qos-ch/slf4j',
+    'stapler/stapler',
+    'basho/riak-java-client',
 ])
 
 
@@ -112,7 +120,7 @@ def filter_data1(raw_dir_path, output_file_path):
 
                 if obj['repo'] + obj['sha'] != cur_repo:
                     # limitation for data count in one repo
-                    if len(filtered_repo_data) >= 80:
+                    if len(filtered_repo_data) >= 50:
                         res.extend(filtered_repo_data)
                         repo_set.add(cur_repo)
 
@@ -129,7 +137,7 @@ def filter_data1(raw_dir_path, output_file_path):
                     continue
 
                 # limitation for directory hierarchy in path field
-                if obj['path'].count('/') < 3 or obj['path'].count('/') > 10:
+                if obj['path'].count('/') < 3 or obj['path'].count('/') > 15:
                     continue
 
                 # limitation for query's token count in docstring_tokens field
@@ -298,7 +306,7 @@ def filter_repo2(repo_file_path, repo_root_path, output_file_path):
                 if node_count > 2000:
                     continue
 
-                if max_sub_dir_count > 5:
+                if max_sub_dir_count > 6 or max_sub_dir_count < 2:
                     continue
 
                 if max_sub_dir_and_file_count > 50:
@@ -356,7 +364,6 @@ def filter_data2(repo_file_path, data_file_path, output_file_path):
         for line in repo_f:
             repo_set.add(json.loads(line)['repo'])
 
-    idx = 0
     with open(data_file_path, 'r') as data_f:
         for line in data_f:
             data_obj = json.loads(line)
@@ -378,14 +385,57 @@ def filter_data2(repo_file_path, data_file_path, output_file_path):
                     no_true_path_count += 1
                     continue
 
-                data_obj['id'] = idx
-                idx += 1
                 res.append(data_obj)
 
     # print(f'No true path count: {no_true_path_count}')
     print(f'Filtered data count: {len(res)}')
 
     with open(output_file_path, 'w') as out_f:
+        for obj in res:
+            json.dump(obj, out_f)
+            out_f.write('\n')
+
+
+def filter_data3(repo_file_path, data_file_path, output_file_path):
+    res = []
+    repo_set = set()
+
+    with open(repo_file_path, 'r') as repo_f:
+        for line in repo_f:
+            repo_set.add(json.loads(line)['repo'])
+
+    with open(data_file_path, 'r') as data_f:
+        for line in data_f:
+            data_obj = json.loads(line)
+
+            if data_obj['repo'] not in repo_set:
+                continue
+
+            res.append(data_obj)
+
+    print(f'Filtered data count: {len(res)}')
+
+    with open(output_file_path, 'w') as out_f:
+        for obj in res:
+            json.dump(obj, out_f)
+            out_f.write('\n')
+
+
+def get_data_final(data_file_path):
+    res = []
+
+    idx = 0
+    with open(data_file_path, 'r') as data_f:
+        for line in data_f:
+            data_obj = json.loads(line)
+
+            data_obj['id'] = idx
+            idx += 1
+            res.append(data_obj)
+
+    print(f'Total data count: {len(res)}')
+
+    with open(data_file_path, 'w') as out_f:
         for obj in res:
             json.dump(obj, out_f)
             out_f.write('\n')
@@ -503,6 +553,9 @@ if __name__ == "__main__":
     repo1_file_path = os.path.join(filtered_dir_path, 'repo1.jsonl')
     repo2_file_path = os.path.join(filtered_dir_path, 'repo2.jsonl')
     data2_file_path = os.path.join(filtered_dir_path, 'data2.jsonl')
+    repo_final_file_path = os.path.join(filtered_dir_path, 'repo_final.jsonl')
+    data3_file_path = os.path.join(filtered_dir_path, 'data3.jsonl')
+    data_final_file_path = os.path.join(filtered_dir_path, 'data_final.jsonl')
     generated_data_file_path = os.path.join(generated_dir_path, 'data.jsonl')
 
     # filter_data1(raw_dir_path, data1_file_path)
@@ -511,8 +564,12 @@ if __name__ == "__main__":
 
     # download_repos(repo1_file_path, repo_dir_path, 0)
 
-    filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
+    # filter_repo2(repo1_file_path, repo_dir_path, repo2_file_path)
 
-    filter_data2(repo2_file_path, data1_file_path, data2_file_path)
+    # filter_data2(repo2_file_path, data1_file_path, data2_file_path)
+
+    # filter_data3(repo_final_file_path, data2_file_path, data3_file_path)
+
+    get_data_final(data_final_file_path)
 
     # generate_data(repo2_file_path, generated_data_file_path)

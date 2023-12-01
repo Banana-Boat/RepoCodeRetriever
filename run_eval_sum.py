@@ -18,7 +18,7 @@ if __name__ == "__main__":
     end_idx = int(sys.argv[2])
 
     repo_root_path = "./eval_data/repo"
-    repo_list_file_path = "./eval_data/filtered/repo2.jsonl"
+    repo_list_file_path = "./eval_data/filtered/repo_final.jsonl"
     result_root_path = "./eval_data/sum_result"
 
     load_dotenv()  # load environment variables from .env file
