@@ -92,6 +92,21 @@ exclude_repo_set = set([
     'qos-ch/slf4j',
     'stapler/stapler',
     'basho/riak-java-client',
+    'mongodb/stitch-android-sdk',
+    'JetBrains/xodus',
+    'dropwizard/dropwizard',
+    'spockframework/spock',
+    'nguillaumin/slick2d-maven',
+    'docusign/docusign-java-client',
+    'landawn/AbacusUtil',
+    'xwiki/xwiki-commons',
+    'marklogic/java-client-api',
+    'leancloud/java-sdk-all',
+    'LearnLib/automatalib',
+    'sialcasa/mvvmFX',
+    'wisdom-framework/wisdom',
+    'ist-dresden/composum',
+    'xwiki/xwiki-rendering',
 ])
 
 
@@ -172,7 +187,7 @@ def filter_data1(raw_dir_path, output_file_path):
                 query = query.strip()
 
                 # ignore query which is too short or too long
-                if len(query) < 50 or len(query) > 200:
+                if len(query) < 40 or len(query) > 200:
                     continue
 
                 # ignore duplicate query in one repo
@@ -244,7 +259,7 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
                     f_out.write(json.dumps(repo_info) + '\n')
 
             # # limitation for star count
-            if repo_info['stargazers_count'] < 100:
+            if repo_info['stargazers_count'] < 50:
                 continue
 
             # cancat zip url
@@ -262,9 +277,7 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
     print(f'Filtered repo count: {len(respos)}')
 
     with open(output_file_path, 'w') as out_f:
-        for obj in respos:
-            json.dump(obj, out_f)
-            out_f.write('\n')
+        json.dump(respos, out_f)
 
 
 def filter_repo2(repo_file_path, repo_root_path, output_file_path):
@@ -273,7 +286,7 @@ def filter_repo2(repo_file_path, repo_root_path, output_file_path):
     temp_file_list = os.listdir(temp_dir_path)
 
     with open(repo_file_path, 'r') as f_repo:
-        repo_objs = [json.loads(line) for line in f_repo]
+        repo_objs = json.load(f_repo)
 
         for repo_obj in tqdm(repo_objs):
             repo_dir_name = f"{repo_obj['repo'].split('/')[-1]}-{repo_obj['sha']}"
@@ -303,13 +316,13 @@ def filter_repo2(repo_file_path, repo_root_path, output_file_path):
                 max_sub_dir_and_file_count = parse_obj['maxSubDirAndFileCount']
                 # print(
                 #     f"Repo: {repo_obj['repo']}, Node count: {node_count}")
-                if node_count > 2000:
+                if node_count > 2500:
                     continue
 
-                if max_sub_dir_count > 6 or max_sub_dir_count < 2:
-                    continue
+                # if max_sub_dir_count > 6 or max_sub_dir_count < 2:
+                #     continue
 
-                if max_sub_dir_and_file_count > 50:
+                if max_sub_dir_and_file_count > 60:
                     continue
 
                 repo_obj['node_count'] = node_count
@@ -322,9 +335,7 @@ def filter_repo2(repo_file_path, repo_root_path, output_file_path):
     print(f'Filtered repo count: {len(repos)}')
 
     with open(output_file_path, 'w') as out_f:
-        for obj in repos:
-            json.dump(obj, out_f)
-            out_f.write('\n')
+        json.dump(repos, out_f)
 
 
 def has_true_path_arr(parse_obj, true_path_str) -> bool:
@@ -361,8 +372,9 @@ def filter_data2(repo_file_path, data_file_path, output_file_path):
     no_true_path_count = 0
 
     with open(repo_file_path, 'r') as repo_f:
-        for line in repo_f:
-            repo_set.add(json.loads(line)['repo'])
+        repo_objs = json.load(repo_f)
+        for repo_obj in repo_objs:
+            repo_set.add(repo_obj['repo'])
 
     with open(data_file_path, 'r') as data_f:
         for line in data_f:
@@ -401,9 +413,11 @@ def filter_data3(repo_file_path, data_file_path, output_file_path):
     repo_set = set()
 
     with open(repo_file_path, 'r') as repo_f:
-        for line in repo_f:
-            repo_set.add(json.loads(line)['repo'])
+        repo_objs = json.load(repo_f)
+        for repo_obj in repo_objs:
+            repo_set.add(repo_obj['repo'])
 
+    idx = 0
     with open(data_file_path, 'r') as data_f:
         for line in data_f:
             data_obj = json.loads(line)
@@ -411,6 +425,8 @@ def filter_data3(repo_file_path, data_file_path, output_file_path):
             if data_obj['repo'] not in repo_set:
                 continue
 
+            data_obj['id'] = idx
+            idx += 1
             res.append(data_obj)
 
     print(f'Filtered data count: {len(res)}')
@@ -421,31 +437,11 @@ def filter_data3(repo_file_path, data_file_path, output_file_path):
             out_f.write('\n')
 
 
-def get_data_final(data_file_path):
-    res = []
-
-    idx = 0
-    with open(data_file_path, 'r') as data_f:
-        for line in data_f:
-            data_obj = json.loads(line)
-
-            data_obj['id'] = idx
-            idx += 1
-            res.append(data_obj)
-
-    print(f'Total data count: {len(res)}')
-
-    with open(data_file_path, 'w') as out_f:
-        for obj in res:
-            json.dump(obj, out_f)
-            out_f.write('\n')
-
-
 def download_repos(repo_file_path, repo_dir_path, start_idx=0):
     repo_dir_name_list = os.listdir(repo_dir_path)
 
     with open(repo_file_path, 'r') as json_f:
-        repo_objs = [json.loads(line) for line in json_f]
+        repo_objs = json.load(json_f)
 
         for i, repo_obj in enumerate(tqdm(repo_objs[start_idx:])):
             # if repo is already downloaded, skip it
@@ -513,7 +509,7 @@ def get_datas_from_sum_out(sum_obj, repo_name, repo_sha):
 def generate_data(repo_file_path, out_put_path):
     datas = []
     with open(repo_file_path, 'r') as repo_f:
-        repo_objs = [json.loads(line) for line in repo_f]
+        repo_objs = json.load(repo_f)
 
         for repo_obj in tqdm(repo_objs):
             sum_out_path = os.path.join('./sum_result', repo_obj['repo'].split(
@@ -550,12 +546,11 @@ if __name__ == "__main__":
 
     data1_file_path = os.path.join(filtered_dir_path, 'data1.jsonl')
     repo_info_file_path = os.path.join(filtered_dir_path, 'repo_info.jsonl')
-    repo1_file_path = os.path.join(filtered_dir_path, 'repo1.jsonl')
-    repo2_file_path = os.path.join(filtered_dir_path, 'repo2.jsonl')
+    repo1_file_path = os.path.join(filtered_dir_path, 'repo1.json')
+    repo2_file_path = os.path.join(filtered_dir_path, 'repo2.json')
     data2_file_path = os.path.join(filtered_dir_path, 'data2.jsonl')
-    repo_final_file_path = os.path.join(filtered_dir_path, 'repo_final.jsonl')
+    repo_final_file_path = os.path.join(filtered_dir_path, 'repo_final.json')
     data3_file_path = os.path.join(filtered_dir_path, 'data3.jsonl')
-    data_final_file_path = os.path.join(filtered_dir_path, 'data_final.jsonl')
     generated_data_file_path = os.path.join(generated_dir_path, 'data.jsonl')
 
     # filter_data1(raw_dir_path, data1_file_path)
@@ -569,7 +564,5 @@ if __name__ == "__main__":
     # filter_data2(repo2_file_path, data1_file_path, data2_file_path)
 
     # filter_data3(repo_final_file_path, data2_file_path, data3_file_path)
-
-    get_data_final(data_final_file_path)
 
     # generate_data(repo2_file_path, generated_data_file_path)

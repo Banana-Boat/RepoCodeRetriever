@@ -85,7 +85,7 @@ class Retriever:
                 return infer_obj
             except Exception as e:
                 self.logger.error(
-                    f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nThe inference result is not formatted, output text:\n{output_text}\n{e}")
+                    f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nThe inference result is not formatted\nSystem Input:\n{system_input_text}\nUser Input:\n{user_input_text}\nOutput:\n{output_text}")
                 return None
         except Exception as e:
             self.logger.error(
@@ -102,10 +102,10 @@ class Retriever:
         # check number of valid context
         if len(file_sum_obj['methods']) == 0:
             self.logger.info(
-                f"INSUFFICIENT CONTEXT{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nNo method in this class.")
+                f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nNo method in this class.")
             return {
                 'is_found': False,
-                'is_error': False,
+                'is_error': True,
             }
 
         # get information list of method
@@ -118,7 +118,7 @@ class Retriever:
             })
 
         # if info list is too long, narrow list according to similarity
-        MAX_INFO_LIST_LENGTH = 25
+        MAX_INFO_LIST_LENGTH = 30
         if len(infos) > MAX_INFO_LIST_LENGTH:
             summaries = [info['summary'] for info in infos]
             similarities = self.sim_caculator.calc_similarities(des, summaries)
@@ -192,10 +192,10 @@ class Retriever:
         # check number of valid context
         if len(dir_sum_obj['subdirectories']) == 0 and len(dir_sum_obj['files']) == 0:
             self.logger.info(
-                f"INSUFFICIENT CONTEXT{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nNo file and subdirectory in this directory.")
+                f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nNo file and subdirectory in this directory.")
             return {
                 'is_found': False,
-                'is_error': False,
+                'is_error': True,
             }
 
         # get information list of subdirectory and file
@@ -215,14 +215,14 @@ class Retriever:
             })
 
         # if info list is too long, narrow list according to similarity
-        MAX_INFO_LIST_LENGTH = 25
-        if len(infos) > MAX_INFO_LIST_LENGTH:
-            summaries = [info['summary'] for info in infos]
-            similarities = self.sim_caculator.calc_similarities(des, summaries)
+        MAX_INFO_LIST_LENGTH = 30
+        # if len(infos) > MAX_INFO_LIST_LENGTH:
+        summaries = [info['summary'] for info in infos]
+        similarities = self.sim_caculator.calc_similarities(des, summaries)
 
-            for i, info in enumerate(infos):
-                info['similarity'] = similarities[i]
-            infos.sort(key=lambda x: x['similarity'], reverse=True)
+        for i, info in enumerate(infos):
+            info['similarity'] = similarities[i]
+        infos.sort(key=lambda x: x['similarity'], reverse=True)
 
         # concat info list to context.
         for info in infos[:MAX_INFO_LIST_LENGTH]:
@@ -230,7 +230,7 @@ class Retriever:
                 'id': info['id'],
                 'name': info['name'],
                 'summary': info['summary'],
-                # 'similarity': info['similarity'],
+                'similarity': info['similarity'],
             }
             temp_str = f"{temp_obj}\n"
             if not self._is_legal_input(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
