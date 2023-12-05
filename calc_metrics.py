@@ -61,11 +61,6 @@ if __name__ == "__main__":
     ret_result_file_path = "./eval_data/ret_result.jsonl"
     sum_result_root_path = "./eval_data/sum_result"
 
-    logging.basicConfig(level=logging.INFO,
-                        format='%(name)s - %(asctime)s - %(levelname)s - %(message)s',
-                        datefmt='%m/%d/%Y %H:%M:%S')
-    pipeline_logger = logging.getLogger("pipeline")
-
     with open(data_file_path, "r") as f_data, open(ret_result_file_path, "r") as f_ret_result:
         data_objs = [json.loads(line) for line in f_data.readlines()]
         result_objs = [json.loads(line) for line in f_ret_result.readlines()]
@@ -75,16 +70,11 @@ if __name__ == "__main__":
         efficiency_arr = []
 
         for result_obj in result_objs:
-            if result_obj['is_error']:
-                pipeline_logger.error(
-                    f"Error occured for id {result_obj['id']}")
-                continue
-
             # get corresponding data object
             data_obj = next(
                 filter(lambda x: x["id"] == result_obj["id"], data_objs), None)
             if data_obj is None:
-                pipeline_logger.error(
+                print(
                     f"Data object not found for id {result_obj['id']}, skip it.")
                 continue
 
@@ -93,7 +83,7 @@ if __name__ == "__main__":
             sum_out_path = os.path.join(
                 sum_result_root_path, repo_name, f"sum_out_{repo_name}.json")
             if not os.path.exists(sum_out_path):
-                pipeline_logger.error(
+                print(
                     f"Summary output path does not exist for id {result_obj['id']}")
                 continue
 
@@ -101,7 +91,7 @@ if __name__ == "__main__":
                 sum_obj = json.load(sum_f)
                 true_path_arr = get_true_path_arr(sum_obj, data_obj['path'])
                 if true_path_arr is None or len(true_path_arr) == 0:
-                    pipeline_logger.error(
+                    print(
                         f"Can't get true path array for id {result_obj['id']}")
                     continue
 
@@ -122,7 +112,7 @@ if __name__ == "__main__":
                         result_obj['ret_times'] / len(true_path_arr))
                 else:
                     accuracy_arr.append(0)
-                    # print(f"wrong: {result_obj['id']}")
+                    # print(f"Wrong: {result_obj['id']}")
 
                     precision_arr.append(
                         correct_count / len(true_path_arr))
@@ -131,9 +121,11 @@ if __name__ == "__main__":
         precision = round(np.mean(precision_arr), 3)
         efficiency = round(np.mean(efficiency_arr), 3)
 
-        # pipeline_logger.info(
-        #     f"\nNumber of accuracy samples: {len(accuracy_arr)}\nNumber of efficiency samples: {len(efficiency_arr)}\nNumber of precision samples: {len(precision_arr)}")
-        pipeline_logger.info(
-            f"\nAccuracy: {accuracy}\nEfficiency: {efficiency}\nPrecision: {precision}")
+        print(
+            f"\nAccuracy: {accuracy} -- Number of samples: {len(accuracy_arr)}")
+        print(
+            f"Precision: {precision} -- Number of samples: {len(precision_arr)}")
+        print(
+            f"Efficiency: {efficiency} -- Number of samples: {len(efficiency_arr)}")
 
     logging.shutdown()

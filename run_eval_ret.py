@@ -8,6 +8,7 @@ from tqdm import tqdm
 from openai_client import OpenAIClient
 from retriever import Retriever
 from sim_caculator import SimCaculator
+from sim_retriever import SimRetriever
 
 
 if __name__ == "__main__":
@@ -46,34 +47,32 @@ if __name__ == "__main__":
                 query = data_obj['query']
                 repo_name = data_obj['repo'].split('/')[-1]
 
-                sum_result_dir_path = os.path.join(
-                    sum_result_root_path, repo_name)
-
                 sum_out_path = os.path.join(
-                    sum_result_dir_path, f"sum_out_{repo_name}.json")
-                ret_log_path = os.path.join(
-                    ret_log_dir_path, f"ret_log_{data_obj['id']}.txt")
-
-                # check if existence of path
+                    sum_result_root_path, repo_name, f"sum_out_{repo_name}.json")
                 if not os.path.exists(sum_out_path):
                     raise Exception("Summary output path does not exist.")
 
-                # create logger
+                # create retriever
+                ret_log_path = os.path.join(
+                    ret_log_dir_path, f"ret_log_{data_obj['id']}.txt")
                 ret_logger = logging.getLogger(ret_log_path)
                 ret_logger.addHandler(
                     logging.FileHandler(ret_log_path, "w", "utf-8")
                 )
                 ret_logger.propagate = False  # prevent printing to console
 
-                # retrieve method according to the description
                 retriever = Retriever(
                     ret_logger, openai_client, sim_calculator)
+
+                # create sim_retriever(comparative experiment)
+                # retriever = SimRetriever(sim_calculator)
+
                 with open(sum_out_path, "r") as f_sum_out:
-                    repo_sum_obj = json.loads(f_sum_out.read())
+                    repo_sum_obj = json.load(f_sum_out)
                     res_obj = retriever.retrieve_in_repo(query, repo_sum_obj)
 
-                    if res_obj['is_error']:
-                        raise Exception("An error occurred during retrieval.")
+                    # if res_obj['is_error']:
+                    #     raise Exception("An error occurred during retrieval.")
 
                     # write result to file
                     obj = {

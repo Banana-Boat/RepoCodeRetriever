@@ -21,11 +21,11 @@ SUM_METHOD = {
 
 
 RET_MAX_OUTPUT_LENGTH = 100
+RET_MAX_BACKTRACK_COUNT = 2
 RET_DIR_MAX_INFO_LENGTH = 8
 RET_FILE_MAX_INFO_LENGTH = 12
 
 # prompt of different hierarchies during retrieval
-RET_MAX_BACKTRACK_COUNT = 2
 RET_DIR_SYSTEM_PROMPT = '''You will be provided with a description of a Java method in a code repository, and a information list of directories or Java class files in this repository in JSON format as follows:
 {"id": <PLACEHOLDER>, "name": <PLACEHOLDER>, "similarity": <PLACEHOLDER>, "summary": <PLACEHOLDER>}
 NOTE: The `similarity` field represents the text similarity between the summary and the method description.
