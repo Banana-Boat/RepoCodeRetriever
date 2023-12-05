@@ -25,34 +25,27 @@ class Summarizer:
         self.gen_err_count = 0  # number of generation error
         self.total_ignore_count = 0  # number of ignored nodes
         self.truncation_count = 0  # number of truncated nodes
-        self.token_used_count = 0
+        self.token_used_count = 0  # number of tokens used in openai
 
-        self.SPECIAL_TOKEN_NUM = 30
+        self.CODELLAMA_SPECIAL_TOKEN_NUM = 30
 
-    def _is_legal_openai_input(self, system_input_text: str, user_input_text: str, max_output_length: int) -> bool:
-        '''
-            Check if the input text length exceeds the model limit.
-        '''
+    def _is_legal_gpt_input(self, system_input_text: str, user_input_text: str, max_output_length: int) -> bool:
+        '''Check if the input text length exceeds the model limit.'''
         encoded_text = self.openai_tokenizer.encode(
             system_input_text + user_input_text)
 
         return len(encoded_text) <= self.openai_client.max_number_of_tokens - max_output_length
 
     def _is_legal_codellama_input(self, system_input_text: str, user_input_text: str, max_output_length: int) -> bool:
-        '''
-            Check if the input text length is less than model limit.
-        '''
+        '''Check if the input text length is less than model limit.'''
         encoded = self.codellama_tokenizer.encode(
             system_input_text + user_input_text,
             add_special_tokens=False, padding=False, truncation=False)
 
-        return len(encoded) <= self.ie_client.max_number_of_tokens - self.SPECIAL_TOKEN_NUM - max_output_length
+        return len(encoded) <= self.ie_client.max_number_of_tokens - self.CODELLAMA_SPECIAL_TOKEN_NUM - max_output_length
 
     def _build_codellama_input(self, node_id: int, system_input_text: str, user_input_text: str, max_output_length: int) -> str:
-        '''
-            Concat promp and context, add special tokens, truncate if exceeds the token limit
-        '''
-
+        '''Concat promp and context, add special tokens, truncate if exceeds the token limit'''
         if not self._is_legal_codellama_input(system_input_text, user_input_text, max_output_length):
             encoded_system_input = self.codellama_tokenizer.encode(
                 system_input_text,
@@ -60,7 +53,7 @@ class Summarizer:
                 padding=False, truncation=False
             )
             max_user_input_length = self.ie_client.max_number_of_tokens - len(encoded_system_input) - \
-                self.SPECIAL_TOKEN_NUM - max_output_length
+                self.CODELLAMA_SPECIAL_TOKEN_NUM - max_output_length
             encoded_user_input = self.codellama_tokenizer.encode(
                 user_input_text,
                 add_special_tokens=False,
@@ -77,19 +70,19 @@ class Summarizer:
 
         return f"<s>[INST]<<SYS>>\n{system_input_text}\n<</SYS>>\n{user_input_text}\n[/INST]"
 
-    def _openai_summarize(self, node_id: int, system_input_text: str, user_input_text: str, max_output_length: int) -> str:
-        '''
-            Generate summary through API calls.
-        '''
+    def _gpt_summarize(self, node_id: int, system_input_text: str, user_input_text: str, max_output_length: int) -> str:
+        '''Generate summary through API calls.'''
         try:
             total_tokens, output_text = self.openai_client.generate(
                 system_input_text, user_input_text, max_output_length)
             self.token_used_count += total_tokens
+
             return output_text
         except Exception as e:
             self.gen_err_count += 1
             self.logger.error(
-                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nFailed to generate summary for:\n{e}")
+                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\n{e}")
+
             return NO_SUMMARY
 
     def _codellama_summarize(self, node_id: int, input_text: str, max_output_length: int) -> dict:
@@ -117,7 +110,7 @@ class Summarizer:
         except Exception as e:
             self.gen_err_count += 1
             self.logger.error(
-                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nFailed to generate summary for:\n{e}")
+                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\n{e}")
             return {
                 'id': node_id,
                 'input_text': input_text,
@@ -165,7 +158,7 @@ class Summarizer:
     def _summarize_methods(self, method_objs: List[dict]) -> List[dict]:
         '''
             Summarize for methods in one class, methods can be processed in batch.
-            method_objs: a list of method_obj
+            LLM: CodeLLama
             return: a list of {id: int, name: str, signature: str, summary: str}
         '''
         SYSTEM_PROMPT = SUM_METHOD['system_prompt']
@@ -222,6 +215,7 @@ class Summarizer:
     def _summarize_file(self, file_obj: dict) -> dict:
         '''
             Summarize for class with the same name as the file according to its methods.
+            LLM: GPT
             methods in one class can be processed in batch.
         '''
         SYSTEM_PROMPT = SUM_FILE['system_prompt']
@@ -241,7 +235,7 @@ class Summarizer:
                 tmp_str = f"\t{method_node['signature']}; // {method_node['summary']}\n"
 
             # ignore methods that exceed the token limit
-            if not self._is_legal_openai_input(SYSTEM_PROMPT, user_input_text + tmp_str, MAX_OUTPUT_LENGTH):
+            if not self._is_legal_gpt_input(SYSTEM_PROMPT, user_input_text + tmp_str, MAX_OUTPUT_LENGTH):
                 ignore_method_count = len(method_nodes) - idx
                 break
 
@@ -249,7 +243,7 @@ class Summarizer:
 
         user_input_text += "}"
 
-        summary = self._openai_summarize(
+        summary = self._gpt_summarize(
             file_obj['id'], SYSTEM_PROMPT, user_input_text, MAX_OUTPUT_LENGTH)
 
         self.logger.info(
@@ -267,9 +261,7 @@ class Summarizer:
         }
 
     def _summarize_dir(self, dir_obj: dict) -> dict:
-        '''
-            Summarize for directory according to its subdirectories and files.
-        '''
+        '''Summarize for directory according to its subdirectories and files.'''
         SYSTEM_PROMPT = SUM_DIR['system_prompt']
         MAX_OUTPUT_LENGTH = SUM_DIR['max_output_length']
 
@@ -301,7 +293,7 @@ class Summarizer:
                     'summary': sub_dir_node['summary'],
                 }
                 temp_str = f"{temp_obj}\n"
-                if not self._is_legal_openai_input(SYSTEM_PROMPT, user_input_text + temp_str, MAX_OUTPUT_LENGTH):
+                if not self._is_legal_gpt_input(SYSTEM_PROMPT, user_input_text + temp_str, MAX_OUTPUT_LENGTH):
                     ignore_sub_dir_count = len(sub_dir_nodes) - idx
                     break
 
@@ -323,7 +315,7 @@ class Summarizer:
                     'summary': file_node['summary'],
                 }
                 temp_str = f"{temp_obj}\n"
-                if not self._is_legal_openai_input(SYSTEM_PROMPT, user_input_text + temp_str, MAX_OUTPUT_LENGTH):
+                if not self._is_legal_gpt_input(SYSTEM_PROMPT, user_input_text + temp_str, MAX_OUTPUT_LENGTH):
                     ignore_file_count = len(file_nodes) - idx
                     break
 
@@ -331,7 +323,7 @@ class Summarizer:
                 valid_context_count += 1
 
         if valid_context_count != 0:
-            summary = self._openai_summarize(
+            summary = self._gpt_summarize(
                 dir_obj['id'], SYSTEM_PROMPT, user_input_text, MAX_OUTPUT_LENGTH)
             summary = summary.strip()
 

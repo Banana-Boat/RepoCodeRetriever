@@ -12,7 +12,7 @@ def get_true_path_arr(sum_obj, true_path_str) -> List[str]:
             path_str = path_str[1:]
 
         for method_obj in file_obj['methods']:
-            if path_str.startswith(method_obj['name']):
+            if path_str == method_obj['name']:
                 true_path_arr.append(method_obj['name'])
                 return
         raise Exception("Can't find method path")
@@ -80,10 +80,6 @@ if __name__ == "__main__":
                     f"Error occured for id {result_obj['id']}")
                 continue
 
-            # test
-            if not result_obj['is_found']:
-                continue
-
             # get corresponding data object
             data_obj = next(
                 filter(lambda x: x["id"] == result_obj["id"], data_objs), None)
@@ -103,12 +99,14 @@ if __name__ == "__main__":
 
             with open(sum_out_path, "r") as sum_f:
                 sum_obj = json.load(sum_f)
-
                 true_path_arr = get_true_path_arr(sum_obj, data_obj['path'])
                 if true_path_arr is None or len(true_path_arr) == 0:
                     pipeline_logger.error(
                         f"Can't get true path array for id {result_obj['id']}")
                     continue
+
+                # print(f"true path: {true_path_arr}")
+                # print(f"result path: {result_obj['path']}")
 
                 # calculate accuracy & efficiency & precision
                 correct_count = 0
@@ -124,6 +122,7 @@ if __name__ == "__main__":
                         result_obj['ret_times'] / len(true_path_arr))
                 else:
                     accuracy_arr.append(0)
+                    # print(f"wrong: {result_obj['id']}")
 
                     precision_arr.append(
                         correct_count / len(true_path_arr))

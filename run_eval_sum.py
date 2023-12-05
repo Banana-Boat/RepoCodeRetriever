@@ -5,8 +5,12 @@ import sys
 from dotenv import load_dotenv
 from ie_client import IEClient
 from openai_client import OpenAIClient
-from run_sum import parse_repo
 from summarizer import Summarizer
+
+
+def parse_repo(repo_path, output_path, log_path) -> int:
+    return os.system(
+        f"java -jar ./java-repo-parser.jar -r={repo_path} -o={output_path} -l={log_path}")
 
 
 if __name__ == "__main__":
@@ -32,11 +36,11 @@ if __name__ == "__main__":
     try:
         ie_client = IEClient()
         openie_client = OpenAIClient()
+
+        if not ie_client.check_health():
+            raise Exception("Inference Endpoints is not available.")
     except Exception as e:
         pipeline_logger.error(e)
-        exit(1)
-    if not ie_client.check_health():
-        pipeline_logger.error("Inference Endpoints is not available.")
         exit(1)
 
     with open(repo_list_file_path, "r") as f_repo_list:
@@ -62,7 +66,7 @@ if __name__ == "__main__":
                 sum_out_path = os.path.join(
                     result_dir_path, f"sum_out_{repo_name}.json")
 
-                # if sum_out_path exists, skip
+                # if repo was already summarized, skip it
                 if os.path.exists(sum_out_path):
                     pipeline_logger.info(
                         f"Skip {idx + start_idx}th repo: {repo_name}")
@@ -87,7 +91,6 @@ if __name__ == "__main__":
                     raise Exception("Failed to parse repo.")
 
                 # build summary tree for entire repo
-
                 summarizer = Summarizer(sum_logger, ie_client, openie_client)
                 with open(parse_out_path, "r") as f_parse_out:
                     repo_obj = json.loads(f_parse_out.read())

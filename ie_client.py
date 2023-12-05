@@ -33,7 +33,6 @@ class IEClient:
 
     def generate(self, input_text: str, max_output_length: int) -> str:
         error_msg = ""
-
         for _ in range(5):
             try:
                 res = requests.post(self.url,
@@ -68,23 +67,12 @@ class IEClient:
 
 
 if __name__ == '__main__':
-
     load_dotenv()
 
     try:
         ie_client = IEClient()
+        if not ie_client.check_health():
+            raise Exception("Inference Endpoints is not available.")
     except Exception as e:
         print(e)
         exit(1)
-
-    input_text = '''<s>[INST]<<SYS>>
-Summarize the Java method provided to you in about 30 words.
-<</SYS>>
-ClassInfoList exclude(final ClassInfoList other){ final Set<ClassInfo> reachableClassesDifference = new LinkedHashSet<>(this); final Set<ClassInfo> directlyRelatedClassesDifference = new LinkedHashSet<>(directlyRelatedClasses); reachableClassesDifference.removeAll(other); directlyRelatedClassesDifference.removeAll(other.directlyRelatedClasses); return new ClassInfoList(reachableClassesDifference, directlyRelatedClassesDifference, sortByName); }
-[/INST]'''
-    output_text = ie_client.generate(input_text, 60)
-    # 最后一句完整的句子之后部分截断
-    last_dot_index = output_text.rfind('.')
-    if last_dot_index != -1:
-        output_text = output_text[:last_dot_index + 1]
-    print(output_text)

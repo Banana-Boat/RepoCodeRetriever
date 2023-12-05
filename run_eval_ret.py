@@ -13,20 +13,20 @@ from sim_caculator import SimCaculator
 if __name__ == "__main__":
     start_idx = int(sys.argv[1]) if len(sys.argv) > 1 else 0
 
+    load_dotenv()
+
     data_file_path = "./eval_data/filtered/data_final.jsonl"
     sum_result_root_path = "./eval_data/sum_result"
     ret_log_dir_path = "./eval_data/ret_log"
     ret_result_file_path = "./eval_data/ret_result.jsonl"
 
-    load_dotenv()  # load environment variables from .env file
+    if not os.path.exists(ret_log_dir_path):
+        os.mkdir(ret_log_dir_path)
 
     logging.basicConfig(level=logging.INFO,
                         format='%(name)s - %(asctime)s - %(levelname)s - %(message)s',
                         datefmt='%m/%d/%Y %H:%M:%S')
     pipeline_logger = logging.getLogger("pipeline")
-
-    if not os.path.exists(ret_log_dir_path):
-        os.mkdir(ret_log_dir_path)
 
     # create client for OpenAI
     try:
@@ -34,10 +34,6 @@ if __name__ == "__main__":
     except Exception as e:
         pipeline_logger.error(e)
         exit(1)
-    # check if enough credits
-    # if openai_client.get_credit_grants() < 2.0:
-    #     pipeline_logger.error("Not enough credits to retrieval.")
-    #     exit(1)
 
     # create similarity caculator
     sim_calculator = SimCaculator()
@@ -62,7 +58,7 @@ if __name__ == "__main__":
                 if not os.path.exists(sum_out_path):
                     raise Exception("Summary output path does not exist.")
 
-                # create loggers
+                # create logger
                 ret_logger = logging.getLogger(ret_log_path)
                 ret_logger.addHandler(
                     logging.FileHandler(ret_log_path, "w", "utf-8")
@@ -79,10 +75,14 @@ if __name__ == "__main__":
                     if res_obj['is_error']:
                         raise Exception("An error occurred during retrieval.")
 
-                    res_obj['id'] = data_obj['id']
-
                     # write result to file
-                    f_ret_result.write(json.dumps(res_obj) + '\n')
+                    obj = {
+                        'id': data_obj['id'],
+                        'is_found': res_obj['is_found'],
+                        'path': res_obj['path'],
+                        'ret_times': res_obj['ret_times'],
+                    }
+                    f_ret_result.write(json.dumps(obj) + '\n')
                     f_ret_result.flush()
 
             except Exception as e:

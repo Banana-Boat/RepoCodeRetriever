@@ -344,7 +344,7 @@ def has_true_path_arr(parse_obj, true_path_str) -> bool:
             path_str = path_str[1:]
 
         for method_obj in file_obj['methods']:
-            if path_str.startswith(method_obj['name']):
+            if path_str == method_obj['name']:
                 return True
 
         return False

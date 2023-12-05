@@ -5,15 +5,15 @@ import time
 from enum import Enum
 
 import tiktoken
-from constants import INPUT_SEPARATOR, LOG_SEPARATOR, RET_DIR_OR_FILE_SYSTEM_PROMPT, RET_MAX_OUTPUT_LENGTH, RET_METHOD_SYSTEM_PROMPT, RET_MAX_BACKTRACK_COUNT
+from constants import INPUT_SEPARATOR, LOG_SEPARATOR, RET_DIR_SYSTEM_PROMPT, RET_DIR_MAX_INFO_LENGTH, RET_FILE_MAX_INFO_LENGTH, RET_MAX_OUTPUT_LENGTH, RET_FILE_SYSTEM_PROMPT, RET_MAX_BACKTRACK_COUNT
 
 from openai_client import OpenAIClient
 from sim_caculator import SimCaculator
 
 
 class InferType(Enum):
-    METHOD = 0
-    DIR_OR_FILE = 1
+    FILE = 0  # retrieve in file
+    DIR = 1  # retrieve in directory
 
 
 class Retriever:
@@ -33,9 +33,7 @@ class Retriever:
         self.ret_times = 0  # retrieval times, reset every retrieval
 
     def _is_legal_input(self, system_input_text: str, user_input_text: str) -> bool:
-        '''
-            Check if the input text length exceeds the model limit.
-        '''
+        '''Check if the input text length exceeds the model limit.'''
         encoded_text = self.openai_tokenizer.encode(
             system_input_text + user_input_text)
 
@@ -50,51 +48,52 @@ class Retriever:
         self.ret_times += 1
 
         # set system input text
-        if type == InferType.METHOD:
-            system_input_text = RET_METHOD_SYSTEM_PROMPT
+        if type == InferType.FILE:
+            system_input_text = RET_FILE_SYSTEM_PROMPT
         else:
-            system_input_text = RET_DIR_OR_FILE_SYSTEM_PROMPT
+            system_input_text = RET_DIR_SYSTEM_PROMPT
 
         try:
+            # generate inference
             total_tokens, output_text = self.openai_client.generate(
                 system_input_text, user_input_text, RET_MAX_OUTPUT_LENGTH)
             self.token_used_count += total_tokens
-
-            try:
-                # get json object in output_text
-                match = re.search(r'\{.*\}', output_text, re.DOTALL)
-                if not match:
-                    raise Exception()
-                json_text = match.group(0)
-
-                # check if the inference result is formatted
-                infer_obj = json.loads(json_text)
-                if type == InferType.METHOD:
-                    if 'id' not in infer_obj or \
-                            not isinstance(infer_obj['id'], int):
-                        raise Exception()
-                else:
-                    if 'ids' not in infer_obj or \
-                            not isinstance(infer_obj['ids'], list) or \
-                            not all(isinstance(x, int) for x in infer_obj['ids']):
-                        raise Exception()
-
-                self.logger.info(
-                    f"INFERENCE{LOG_SEPARATOR}\nNode ID: {node_id}\nSystem Input:\n{system_input_text}\nUser Input:\n{user_input_text}\nOutput:\n{infer_obj}")
-
-                return infer_obj
-            except Exception as e:
-                self.logger.error(
-                    f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nThe inference result is not formatted\nSystem Input:\n{system_input_text}\nUser Input:\n{user_input_text}\nOutput:\n{output_text}")
-                return None
         except Exception as e:
             self.logger.error(
-                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nAn Error occurred during generation API call:\n{e}")
+                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nSystem Input:\n{system_input_text}\nUser Input:\n{user_input_text}\n{e}")
+            return None
+
+        try:
+            # get json object in output_text
+            match = re.search(r'\{.*\}', output_text, re.DOTALL)
+            if not match:
+                raise Exception()
+            json_text = match.group(0)
+
+            # check if the result is formatted
+            infer_obj = json.loads(json_text)
+            if type == InferType.FILE:
+                if 'id' not in infer_obj or \
+                        not isinstance(infer_obj['id'], int):
+                    raise Exception()
+            elif type == InferType.DIR:
+                if 'ids' not in infer_obj or \
+                        not isinstance(infer_obj['ids'], list) or \
+                        not all(isinstance(x, int) for x in infer_obj['ids']):
+                    raise Exception()
+
+            self.logger.info(
+                f"INFERENCE{LOG_SEPARATOR}\nNode ID: {node_id}\nSystem Input:\n{system_input_text}\nUser Input:\n{user_input_text}\nOutput:\n{infer_obj}")
+
+            return infer_obj
+        except Exception as e:
+            self.logger.error(
+                f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nSystem Input:\n{system_input_text}\nUser Input:\n{user_input_text}\nOutput:\n{output_text}\nThe inference result is not formatted")
             return None
 
     def _retrieve_in_file(self, des: str, file_sum_obj: dict) -> dict:
         '''
-            Retrieve the method according to the description and the summary of the class.
+            Retrieve the method according to its description and the summary of the file.
             return {is_found: bool, is_error: bool}.
         '''
         user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
@@ -102,7 +101,7 @@ class Retriever:
         # check number of valid context
         if len(file_sum_obj['methods']) == 0:
             self.logger.info(
-                f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nNo method in this class.")
+                f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nNo method in this file.")
             return {
                 'is_found': False,
                 'is_error': True,
@@ -117,25 +116,24 @@ class Retriever:
                 'summary': method_sum_obj['summary'],
             })
 
-        # if info list is too long, narrow list according to similarity
-        MAX_INFO_LIST_LENGTH = 30
-        if len(infos) > MAX_INFO_LIST_LENGTH:
-            summaries = [info['summary'] for info in infos]
-            similarities = self.sim_caculator.calc_similarities(des, summaries)
+        # calculate similarity
+        summaries = [info['summary'] for info in infos]
+        similarities = self.sim_caculator.calc_similarities(des, summaries)
 
-            for i, info in enumerate(infos):
-                info['similarity'] = similarities[i]
-            infos.sort(key=lambda x: x['similarity'], reverse=True)
+        for i, info in enumerate(infos):
+            info['similarity'] = similarities[i]
+        infos.sort(key=lambda x: x['similarity'], reverse=True)
 
         # concat info list to context.
-        for info in infos[:MAX_INFO_LIST_LENGTH]:
+        for info in infos[:RET_FILE_MAX_INFO_LENGTH]:
             temp_obj = {
                 'id': info['id'],
                 'name': info['name'],
+                'similarity': info['similarity'],
                 'summary': info['summary'],
             }
             temp_str = f"{temp_obj}\n"
-            if not self._is_legal_input(RET_METHOD_SYSTEM_PROMPT, user_input_text + temp_str):
+            if not self._is_legal_input(RET_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {file_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
@@ -147,7 +145,7 @@ class Retriever:
 
         # infer the method
         infer_obj = self._infer(
-            file_sum_obj['id'], InferType.METHOD, user_input_text)
+            file_sum_obj['id'], InferType.FILE, user_input_text)
 
         # error occurred during generation
         if infer_obj == None:
@@ -184,7 +182,7 @@ class Retriever:
 
     def _retrieve_in_dir(self, des: str, dir_sum_obj: dict) -> dict:
         '''
-            Retrieve the method according to the description and the summary of the directory.
+            Retrieve the method according to its description and the summary of the directory.
             return {is_found: bool, is_error: bool}.
         '''
         user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
@@ -192,7 +190,7 @@ class Retriever:
         # check number of valid context
         if len(dir_sum_obj['subdirectories']) == 0 and len(dir_sum_obj['files']) == 0:
             self.logger.info(
-                f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nNo file and subdirectory in this directory.")
+                f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nNo file or subdirectory in this directory.")
             return {
                 'is_found': False,
                 'is_error': True,
@@ -206,7 +204,6 @@ class Retriever:
                 'name': sub_dir_sum_obj['name'],
                 'summary': sub_dir_sum_obj['summary'],
             })
-
         for file_sum_obj in dir_sum_obj['files']:
             infos.append({
                 'id': file_sum_obj['id'],
@@ -214,9 +211,7 @@ class Retriever:
                 'summary': file_sum_obj['summary'],
             })
 
-        # if info list is too long, narrow list according to similarity
-        MAX_INFO_LIST_LENGTH = 30
-        # if len(infos) > MAX_INFO_LIST_LENGTH:
+        # calculate similarity
         summaries = [info['summary'] for info in infos]
         similarities = self.sim_caculator.calc_similarities(des, summaries)
 
@@ -225,15 +220,15 @@ class Retriever:
         infos.sort(key=lambda x: x['similarity'], reverse=True)
 
         # concat info list to context.
-        for info in infos[:MAX_INFO_LIST_LENGTH]:
+        for info in infos[:RET_DIR_MAX_INFO_LENGTH]:
             temp_obj = {
                 'id': info['id'],
                 'name': info['name'],
-                'summary': info['summary'],
                 'similarity': info['similarity'],
+                'summary': info['summary'],
             }
             temp_str = f"{temp_obj}\n"
-            if not self._is_legal_input(RET_DIR_OR_FILE_SYSTEM_PROMPT, user_input_text + temp_str):
+            if not self._is_legal_input(RET_DIR_SYSTEM_PROMPT, user_input_text + temp_str):
                 self.logger.info(
                     f"CONTEXT ERROR{LOG_SEPARATOR}\nNode ID: {dir_sum_obj['id']}\nInput text length exceeds the model limit.")
                 return {
@@ -245,7 +240,7 @@ class Retriever:
 
         # infer the subdirectiry or file
         infer_obj = self._infer(
-            dir_sum_obj['id'], InferType.DIR_OR_FILE, user_input_text)
+            dir_sum_obj['id'], InferType.DIR, user_input_text)
 
         # error occurred during generation
         if infer_obj == None:
@@ -302,7 +297,7 @@ class Retriever:
 
     def retrieve_in_repo(self, des: str, repo_sum_obj: dict) -> dict:
         '''
-            Retrieve the method according to the description and the summary of the entire repo.
+            Retrieve the method according to its description and the summary of the entire repo.
             return {is_found: bool, is_error: bool, path: List[str], ret_times: int}.
             If is_found is False, path is the search path of the most probability.
         '''
