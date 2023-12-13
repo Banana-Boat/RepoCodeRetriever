@@ -32,6 +32,7 @@ class IEClient:
         return res.status_code == 200
 
     def generate(self, input_text: str, max_output_length: int) -> str:
+        '''raise Exception if error occurs.'''
         error_msg = ""
         for _ in range(5):
             try:

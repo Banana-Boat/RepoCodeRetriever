@@ -1,7 +1,6 @@
 import json
 import logging
 import re
-import time
 from enum import Enum
 
 import tiktoken
@@ -27,6 +26,7 @@ class Retriever:
 
         self.sim_caculator = sim_caculator
 
+        self.query = ""  # query, set every retrieval
         self.result_path = []  # result path, reset every retrieval
         self.most_probable_path = []  # most probable path, reset every retrieval
         self.is_first_try = True  # reset every retrieval
@@ -91,12 +91,12 @@ class Retriever:
                 f"GENERATION ERROR{LOG_SEPARATOR}\nNode ID: {node_id}\nSystem Input:\n{system_input_text}\nUser Input:\n{user_input_text}\nOutput:\n{output_text}\nThe inference result is not formatted")
             return None
 
-    def _retrieve_in_file(self, des: str, file_sum_obj: dict) -> dict:
+    def _retrieve_in_file(self, file_sum_obj: dict) -> dict:
         '''
             Retrieve the method according to its description and the summary of the file.
             return {is_found: bool, is_error: bool}.
         '''
-        user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
+        user_input_text = f"Method Description: {self.query}\n{INPUT_SEPARATOR}\nInformation List:\n"
 
         # check number of valid context
         if len(file_sum_obj['methods']) == 0:
@@ -118,7 +118,8 @@ class Retriever:
 
         # calculate similarity
         summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(des, summaries)
+        similarities = self.sim_caculator.calc_similarities(
+            self.query, summaries)
 
         for i, info in enumerate(infos):
             info['similarity'] = similarities[i]
@@ -180,12 +181,12 @@ class Retriever:
             'is_error': False,
         }
 
-    def _retrieve_in_dir(self, des: str, dir_sum_obj: dict) -> dict:
+    def _retrieve_in_dir(self, dir_sum_obj: dict) -> dict:
         '''
             Retrieve the method according to its description and the summary of the directory.
             return {is_found: bool, is_error: bool}.
         '''
-        user_input_text = f"Method Description: {des}\n{INPUT_SEPARATOR}\nInformation List:\n"
+        user_input_text = f"Method Description: {self.query}\n{INPUT_SEPARATOR}\nInformation List:\n"
 
         # check number of valid context
         if len(dir_sum_obj['subdirectories']) == 0 and len(dir_sum_obj['files']) == 0:
@@ -213,7 +214,8 @@ class Retriever:
 
         # calculate similarity
         summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(des, summaries)
+        similarities = self.sim_caculator.calc_similarities(
+            self.query, summaries)
 
         for i, info in enumerate(infos):
             info['similarity'] = similarities[i]
@@ -277,14 +279,14 @@ class Retriever:
                     # add to most probable path if it is the first try
                     self.most_probable_path.append(next_sum_obj['name'])
 
-                res = self._retrieve_in_file(des, file_sum_obj)
+                res = self._retrieve_in_file(file_sum_obj)
             elif sub_dir_sum_obj is not None:
                 next_sum_obj = sub_dir_sum_obj
                 if self.is_first_try:
                     # add to most probable path if it is the first try
                     self.most_probable_path.append(next_sum_obj['name'])
 
-                res = self._retrieve_in_dir(des, sub_dir_sum_obj)
+                res = self._retrieve_in_dir(sub_dir_sum_obj)
 
             if res['is_found'] or res['is_error']:
                 self.result_path.append(next_sum_obj['name'])
@@ -295,25 +297,23 @@ class Retriever:
             'is_error': False,
         }
 
-    def retrieve_in_repo(self, des: str, repo_sum_obj: dict) -> dict:
+    def retrieve_in_repo(self, query: str, repo_sum_obj: dict) -> dict:
         '''
             Retrieve the method according to its description and the summary of the entire repo.
             return {is_found: bool, is_error: bool, path: List[str], ret_times: int}.
             If is_found is False, path is the search path of the most probability.
         '''
-        start_time = time.time()
+        self.query = query
 
         self.result_path = []
         self.is_first_try = True
         self.most_probable_path = []
         self.ret_times = 0
 
-        res = self._retrieve_in_dir(des, repo_sum_obj)
+        res = self._retrieve_in_dir(repo_sum_obj)
 
-        self.logger.info(f"COMPLETION{LOG_SEPARATOR}")
+        self.logger.info(f"RETRIEVAL COMPLETION{LOG_SEPARATOR}")
         self.logger.info(f"Token Used: {self.token_used_count}")
-        self.logger.info(
-            f"Retrieval time cost: {time.strftime('%H:%M:%S', time.gmtime(time.time() - start_time))}")
 
         if res['is_found']:
             self.result_path.reverse()

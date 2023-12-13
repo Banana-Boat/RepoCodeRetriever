@@ -5,10 +5,11 @@ class SimRetriever:
     def __init__(self, sim_caculator: SimCaculator):
         self.sim_caculator = sim_caculator
 
+        self.query = ""  # query, set every retrieval
         self.result_path = []  # result path, reset every retrieval
         self.ret_times = 0  # retrieval times, reset every retrieval
 
-    def _retrieve_in_file(self, des: str, file_sum_obj: dict):
+    def _retrieve_in_file(self, file_sum_obj: dict):
         '''Retrieve the method according to its description and the summary of the class.'''
         # get information list of method
         infos = []
@@ -21,7 +22,8 @@ class SimRetriever:
 
         # calculate similarity, and sort infos according to similarity
         summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(des, summaries)
+        similarities = self.sim_caculator.calc_similarities(
+            self.query, summaries)
 
         for i, info in enumerate(infos):
             info['similarity'] = similarities[i]
@@ -31,7 +33,7 @@ class SimRetriever:
         self.ret_times += 1
         self.result_path.append(infos[0]['name'])
 
-    def _retrieve_in_dir(self, des: str, dir_sum_obj: dict):
+    def _retrieve_in_dir(self, dir_sum_obj: dict):
         '''Retrieve the method according to its description and the summary of the directory.'''
         # get information list of subdirectory and file
         infos = []
@@ -51,7 +53,8 @@ class SimRetriever:
 
         # calculate similarity, and sort infos according to similarity
         summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(des, summaries)
+        similarities = self.sim_caculator.calc_similarities(
+            self.query, summaries)
 
         for i, info in enumerate(infos):
             info['similarity'] = similarities[i]
@@ -70,23 +73,25 @@ class SimRetriever:
 
         if file_sum_obj is not None:
             next_sum_obj = file_sum_obj
-            self._retrieve_in_file(des, file_sum_obj)
+            self._retrieve_in_file(file_sum_obj)
         elif sub_dir_sum_obj is not None:
             next_sum_obj = sub_dir_sum_obj
-            self._retrieve_in_dir(des, sub_dir_sum_obj)
+            self._retrieve_in_dir(sub_dir_sum_obj)
 
         self.result_path.append(next_sum_obj['name'])
         self.ret_times += 1
 
-    def retrieve_in_repo(self, des: str, repo_sum_obj: dict) -> dict:
+    def retrieve_in_repo(self, query: str, repo_sum_obj: dict) -> dict:
         '''
             Retrieve the method according to its description and the summary of the entire repo.
             return {is_found: bool, path: List[str], ret_times: int}.
         '''
+        self.query = query
+
         self.result_path = []
         self.ret_times = 0
 
-        self._retrieve_in_dir(des, repo_sum_obj)
+        self._retrieve_in_dir(query, repo_sum_obj)
         self.result_path.reverse()
 
         return {

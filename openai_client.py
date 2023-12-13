@@ -22,7 +22,10 @@ class OpenAIClient:
         self.max_number_of_tokens = int(max_number_of_tokens)
 
     def generate(self, system_input_text: str, user_input_text: str, max_output_length: int) -> Tuple[int, str]:
-        '''return total_tokens and output_text'''
+        '''
+            return: (total_tokens, output_text)
+            raise Exception if error occurs.
+        '''
         error_msg = ""
         for _ in range(5):
             try:

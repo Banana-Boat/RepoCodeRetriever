@@ -20,7 +20,19 @@ SUM_METHOD = {
 }
 
 
-RET_MAX_OUTPUT_LENGTH = 100
+# variables for query expansion
+EXP_MAX_REF_COUNT = 2  # max reference summary count per node
+EXP_DOC = {
+    "system_prompt": "Summarize the text provided to you in about 500 words.",
+    "max_output_length": 1000,
+}
+EXP_QUERY = {
+    "system_prompt": "You will be provided with a query and a document, and you need to expand the query in about 50 words using the document as the context.",
+    "max_output_length": 100,
+}
+
+# variables for retrieval
+RET_MAX_OUTPUT_LENGTH = 50
 RET_MAX_BACKTRACK_COUNT = 2
 RET_DIR_MAX_INFO_LENGTH = 8
 RET_FILE_MAX_INFO_LENGTH = 12
