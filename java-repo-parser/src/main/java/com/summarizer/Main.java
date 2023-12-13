@@ -18,8 +18,6 @@ public class Main implements Runnable {
     private String repoPath = "";
     @Option(names = {"-o", "--output-path"}, description = "Path to the output file")
     private String outputPath = "./parse_output.json";
-    @Option(names = {"-l", "--log-path"}, description = "Path to the log file")
-    private String logPath = "./parse_log.txt";
     @Option(names = {"-v", "--lang-version"}, description = "Version of the Java language", defaultValue = "17")
     private String langVersion = "17";
 
@@ -50,17 +48,6 @@ public class Main implements Runnable {
             } catch (Exception e) {
                 e.printStackTrace();
                 System.exit(1);
-            }
-        } catch (Exception e) {
-            e.printStackTrace();
-            System.exit(1);
-        }
-
-
-        // write log
-        try (FileWriter fw = new FileWriter(logPath)) {
-            for (String log : parser.logs) {
-                fw.write(log + "\n==================================================================\n");
             }
         } catch (Exception e) {
             e.printStackTrace();

@@ -8,24 +8,26 @@ from openai_client import OpenAIClient
 from summarizer import Summarizer
 
 
-def parse_repo(repo_path, output_path, log_path) -> int:
+def parse_repo(repo_path, output_path) -> int:
     return os.system(
-        f"java -jar ./java-repo-parser.jar -r={repo_path} -o={output_path} -l={log_path}")
+        f"java -jar ./java-repo-parser.jar -r={repo_path} -o={output_path}")
 
 
 if __name__ == "__main__":
     if len(sys.argv) != 3:
         print("Usage: python run_eval_sum.py <start_idx> <end_idx>")
         exit(1)
-
     start_idx = int(sys.argv[1])
     end_idx = int(sys.argv[2])
+
+    load_dotenv()
 
     repo_root_path = "./eval_data/repo"
     repo_list_file_path = "./eval_data/filtered/repo_final.json"
     result_root_path = "./eval_data/sum_result"
 
-    load_dotenv()  # load environment variables from .env file
+    if not os.path.exists(result_root_path):
+        os.mkdir(result_root_path)
 
     logging.basicConfig(level=logging.INFO,
                         format='%(name)s - %(asctime)s - %(levelname)s - %(message)s',
@@ -57,8 +59,6 @@ if __name__ == "__main__":
                 if not os.path.exists(result_dir_path):
                     os.mkdir(result_dir_path)
 
-                parse_log_path = os.path.join(
-                    result_dir_path, f"parse_log_{repo_name}.txt")
                 parse_out_path = os.path.join(
                     result_dir_path, f"parse_out_{repo_name}.json")
                 sum_log_path = os.path.join(
@@ -87,7 +87,7 @@ if __name__ == "__main__":
                     raise Exception(f"Repo's path does not exist.")
 
                 # parse entire repo using java-repo-parser tool
-                if (0 != parse_repo(repo_path, parse_out_path, parse_log_path)):
+                if (0 != parse_repo(repo_path, parse_out_path)):
                     raise Exception("Failed to parse repo.")
 
                 # build summary tree for entire repo

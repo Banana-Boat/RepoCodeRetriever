@@ -8,9 +8,9 @@ from tqdm import tqdm
 import requests
 
 
-def parse_repo(repo_path, output_path, log_path) -> int:
+def parse_repo(repo_path, output_path) -> int:
     return os.system(
-        f"java -jar ../java-repo-parser.jar -r={repo_path} -o={output_path} -l={log_path}")
+        f"java -jar ../java-repo-parser.jar -r={repo_path} -o={output_path}")
 
 
 exclude_repo_set = set([
@@ -292,14 +292,12 @@ def filter_repo2(repo_file_path, repo_root_path, output_file_path):
             repo_dir_name = f"{repo_obj['repo'].split('/')[-1]}-{repo_obj['sha']}"
             repo_dir_path = os.path.join(repo_root_path, repo_dir_name)
 
-            parse_log_path = os.path.join(
-                temp_dir_path, f"parse_log_{repo_dir_name}.txt")
             parse_out_path = os.path.join(
                 temp_dir_path, f"parse_out_{repo_dir_name}.json")
 
             # if repo is already parsed, skip it
             if f"parse_out_{repo_dir_name}.json" not in temp_file_list:
-                if (0 != parse_repo(repo_dir_path, parse_out_path, parse_log_path)):
+                if (0 != parse_repo(repo_dir_path, parse_out_path)):
                     print(f"Failed to parse repo: {repo_obj['repo']}")
                     continue
 
@@ -465,84 +463,10 @@ def download_repos(repo_file_path, repo_dir_path, start_idx=0):
                 return
 
 
-def get_datas_from_sum_out(sum_obj, repo_name, repo_sha):
-    NO_SUMMARY = "*** No summary ***"
-
-    def wonder_in_file(file_obj, path_str):
-        for method_obj in file_obj['methods']:
-            summary = method_obj['summary']
-            if summary == NO_SUMMARY:
-                continue
-
-            if summary[-1] != '.':
-                continue
-
-            summary = summary.replace(method_obj['name'], '')
-            summary = summary.replace('()', '')
-            summary = summary.replace('``', '')
-            summary = summary.replace(', ,', ',')
-            summary = summary.replace('\"\"', '')
-            summary = re.sub(r'\s+', ' ', summary)
-            summary = summary.strip()
-
-            res_path = "/".join(path_str.split('/')[1:])
-            datas.append({
-                'repo': repo_name,
-                'sha': repo_sha,
-                'query': summary,
-                'path': res_path + '/' + method_obj['name']
-            })
-
-    def wonder_in_dir(dir_obj, path_str):
-        for sub_dir_obj in dir_obj['subdirectories']:
-            wonder_in_dir(sub_dir_obj, f"{path_str}/{sub_dir_obj['name']}")
-
-        for file_obj in dir_obj['files']:
-            wonder_in_file(file_obj, f"{path_str}/{file_obj['name']}")
-
-    datas = []
-    wonder_in_dir(sum_obj, sum_obj['name'])
-
-    return datas
-
-
-def generate_data(repo_file_path, out_put_path):
-    datas = []
-    with open(repo_file_path, 'r') as repo_f:
-        repo_objs = json.load(repo_f)
-
-        for repo_obj in tqdm(repo_objs):
-            sum_out_path = os.path.join('./sum_result', repo_obj['repo'].split(
-                '/')[-1], f"sum_out_{repo_obj['repo'].split('/')[-1]}.json")
-
-            if not os.path.exists(sum_out_path):
-                print(f'Sum out file not exists: {sum_out_path}')
-                continue
-
-            with open(sum_out_path, 'r') as sum_f:
-                sum_obj = json.load(sum_f)
-                temp_datas = get_datas_from_sum_out(
-                    sum_obj, repo_obj['repo'], repo_obj['sha'])
-                datas.extend(temp_datas)
-
-    random.shuffle(datas)
-    datas = datas[:100]
-    for idx, data in enumerate(datas):
-        data['id'] = idx
-
-    print(f'Generated data count: {len(datas)}')
-
-    with open(out_put_path, 'w') as out_f:
-        for data in datas:
-            json.dump(data, out_f)
-            out_f.write('\n')
-
-
 if __name__ == "__main__":
     raw_dir_path = os.path.join(os.getcwd(), 'raw')
     repo_dir_path = os.path.join(os.getcwd(), 'repo')
     filtered_dir_path = os.path.join(os.getcwd(), 'filtered')
-    generated_dir_path = os.path.join(os.getcwd(), 'generated')
 
     data1_file_path = os.path.join(filtered_dir_path, 'data1.jsonl')
     repo_info_file_path = os.path.join(filtered_dir_path, 'repo_info.jsonl')
@@ -551,7 +475,6 @@ if __name__ == "__main__":
     data2_file_path = os.path.join(filtered_dir_path, 'data2.jsonl')
     repo_final_file_path = os.path.join(filtered_dir_path, 'repo_final.json')
     data3_file_path = os.path.join(filtered_dir_path, 'data3.jsonl')
-    generated_data_file_path = os.path.join(generated_dir_path, 'data.jsonl')
 
     # filter_data1(raw_dir_path, data1_file_path)
 
@@ -564,5 +487,3 @@ if __name__ == "__main__":
     # filter_data2(repo2_file_path, data1_file_path, data2_file_path)
 
     # filter_data3(repo_final_file_path, data2_file_path, data3_file_path)
-
-    # generate_data(repo2_file_path, generated_data_file_path)

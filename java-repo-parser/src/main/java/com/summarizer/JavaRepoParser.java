@@ -20,9 +20,6 @@ public class JavaRepoParser {
     private int maxSubDirAndFileCount = 0; // max number of subdirectories and files in a directory
     private int totalDirCount = 0; // total number of directories
     private int totalFileCount = 0; // total number of files
-    private int errorFileCount = 0; // number of parsing error file
-    public List<String> logs = new ArrayList<>(); // parse logs
-
     public JavaRepoParser(ParserConfiguration.LanguageLevel languageLevel) {
         this.languageLevel = languageLevel;
     }
@@ -33,7 +30,6 @@ public class JavaRepoParser {
 
         JDirectory jDirectory = extractDirectory(dir, dir.getName());
 
-        logs.add(0, "Number of parsing error files：" + errorFileCount);
 
         return new JRepo(
                 jDirectory,

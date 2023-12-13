@@ -71,8 +71,8 @@ if __name__ == "__main__":
                     repo_sum_obj = json.load(f_sum_out)
                     res_obj = retriever.retrieve_in_repo(query, repo_sum_obj)
 
-                    # if res_obj['is_error']:
-                    #     raise Exception("An error occurred during retrieval.")
+                    if res_obj['is_error']:
+                        raise Exception("An error occurred during retrieval.")
 
                     # write result to file
                     obj = {

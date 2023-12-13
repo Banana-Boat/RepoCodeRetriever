@@ -345,9 +345,7 @@ class Summarizer:
         }
 
     def summarize_repo(self, repo_obj: dict) -> dict:
-        '''
-            Generate the summary tree for the entire repo.
-        '''
+        '''Generate the summary tree for the entire repo.'''
         start_time = time.time()
 
         with tqdm(total=repo_obj['nodeCount']) as pbar:
