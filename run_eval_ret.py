@@ -38,6 +38,10 @@ if __name__ == "__main__":
 
     # create similarity caculator
     sim_calculator = SimCaculator()
+    # create retriever
+    retriever = Retriever(openai_client, sim_calculator)
+    # create sim_retriever(comparative experiment)
+    # retriever = SimRetriever(sim_calculator)
 
     with open(data_file_path, "r") as f_data, open(ret_result_file_path, "a") as f_ret_result:
         data_objs = [json.loads(line) for line in f_data.readlines()]
@@ -52,7 +56,7 @@ if __name__ == "__main__":
                 if not os.path.exists(sum_out_path):
                     raise Exception("Summary output path does not exist.")
 
-                # create retriever
+                # create logger
                 ret_log_path = os.path.join(
                     ret_log_dir_path, f"ret_log_{data_obj['id']}.txt")
                 ret_logger = logging.getLogger(ret_log_path)
@@ -61,23 +65,20 @@ if __name__ == "__main__":
                 )
                 ret_logger.propagate = False  # prevent printing to console
 
-                retriever = Retriever(
-                    ret_logger, openai_client, sim_calculator)
-
-                # create sim_retriever(comparative experiment)
-                # retriever = SimRetriever(sim_calculator)
-
                 with open(sum_out_path, "r") as f_sum_out:
                     repo_sum_obj = json.load(f_sum_out)
-                    res_obj = retriever.retrieve_in_repo(query, repo_sum_obj)
 
-                    if res_obj['is_error']:
+                    # retrieve the result
+                    is_error, res_obj = retriever.retrieve(
+                        query, repo_sum_obj, ret_logger)
+                    if is_error:
                         raise Exception("An error occurred during retrieval.")
 
                     # write result to file
                     obj = {
                         'id': data_obj['id'],
                         'is_found': res_obj['is_found'],
+                        'is_query_expanded': res_obj['is_query_expanded'],
                         'path': res_obj['path'],
                         'ret_times': res_obj['ret_times'],
                     }

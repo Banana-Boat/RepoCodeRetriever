@@ -105,7 +105,7 @@ if __name__ == "__main__":
                         correct_count += 1
                     else:
                         break
-                if correct_count == len(true_path_arr):
+                if not result_obj['is_query_expanded'] and correct_count == len(true_path_arr):
                     accuracy_arr.append(1)
 
                     efficiency_arr.append(

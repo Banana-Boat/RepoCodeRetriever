@@ -1,13 +1,11 @@
+import logging
+from typing import Tuple
 from sim_caculator import SimCaculator
 
 
 class SimRetriever:
     def __init__(self, sim_caculator: SimCaculator):
         self.sim_caculator = sim_caculator
-
-        self.query = ""  # query, set every retrieval
-        self.result_path = []  # result path, reset every retrieval
-        self.ret_times = 0  # retrieval times, reset every retrieval
 
     def _retrieve_in_file(self, file_sum_obj: dict):
         '''Retrieve the method according to its description and the summary of the class.'''
@@ -81,12 +79,13 @@ class SimRetriever:
         self.result_path.append(next_sum_obj['name'])
         self.ret_times += 1
 
-    def retrieve_in_repo(self, query: str, repo_sum_obj: dict) -> dict:
+    def retrieve(self, query: str, repo_sum_obj: dict, logger: logging.Logger) -> Tuple[bool, dict]:
         '''
             Retrieve the method according to its description and the summary of the entire repo.
-            return {is_found: bool, path: List[str], ret_times: int}.
+            return (is_error: bool, {is_found: bool, path: List[str], ret_times: int}).
         '''
         self.query = query
+        self.logger = logger
 
         self.result_path = []
         self.ret_times = 0
@@ -94,7 +93,7 @@ class SimRetriever:
         self._retrieve_in_dir(query, repo_sum_obj)
         self.result_path.reverse()
 
-        return {
+        return False, {
             'is_found': True,
             'path': self.result_path,
             'ret_times': self.ret_times,

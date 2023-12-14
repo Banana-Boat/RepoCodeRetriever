@@ -3,6 +3,7 @@ LOG_SEPARATOR = "===============================================================
 
 NO_SUMMARY = "*** No summary ***"
 
+# variables for summarization
 # prompt and max output length of different hierarchies during summarization
 SUM_DIR = {
     "system_prompt": '''You will be provided with a directory name and an information list of subdirectories and Java class files in this directory in JSON format as follows:
@@ -19,16 +20,14 @@ SUM_METHOD = {
     "max_output_length": 80,
 }
 
-
 # variables for query expansion
-EXP_MAX_REF_COUNT = 2  # max reference summary count per node
-EXP_DOC = {
-    "system_prompt": "Summarize the text provided to you in about 500 words.",
-    "max_output_length": 1000,
-}
+EXP_MAX_REF_COUNT = 3  # max reference summary count per node
 EXP_QUERY = {
-    "system_prompt": "You will be provided with a query and a document, and you need to expand the query in about 50 words using the document as the context.",
-    "max_output_length": 100,
+    "system_prompt": '''Users use a query expressed in natural language to search for a corresponding Java method. To make the results more precise, you need to expand this query to be more detailed.
+You will be provided with a query and a document, please refer to this document to expand the given query to about 30 words.
+You need to return a JSON object as follows:
+{"expanded_query": <PLACEHOLDER>}''',
+    "max_output_length": 80,
 }
 
 # variables for retrieval
