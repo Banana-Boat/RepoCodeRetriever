@@ -107,6 +107,9 @@ exclude_repo_set = set([
     'wisdom-framework/wisdom',
     'ist-dresden/composum',
     'xwiki/xwiki-rendering',
+    'eclipse/xtext-core',
+    'asterisk-java/asterisk-java',
+    'spring-projects/spring-loaded'
 ])
 
 
@@ -116,7 +119,6 @@ def filter_data1(raw_dir_path, output_file_path):
     cur_repo = ''
     cur_repo_path_set = set()  # use to ignore same path data in one repo
     repo_set = set()  # use to calculate repo count, there has discontinuous data in one repo
-    raw_data_count = 0
 
     for filename in tqdm(os.listdir(raw_dir_path)):
         if not filename.endswith('.jsonl'):
@@ -124,7 +126,6 @@ def filter_data1(raw_dir_path, output_file_path):
 
         with open(os.path.join(raw_dir_path, filename), 'r') as jsonl_f:
             for line in jsonl_f:
-                raw_data_count += 1
                 obj = json.loads(line)
 
                 # exclude repos(can't be parsed / too large / renamed / difficult to understand)
@@ -135,7 +136,7 @@ def filter_data1(raw_dir_path, output_file_path):
 
                 if obj['repo'] + obj['sha'] != cur_repo:
                     # limitation for data count in one repo
-                    if len(filtered_repo_data) >= 50:
+                    if len(filtered_repo_data) >= 100:
                         res.extend(filtered_repo_data)
                         repo_set.add(cur_repo)
 
@@ -152,35 +153,33 @@ def filter_data1(raw_dir_path, output_file_path):
                     continue
 
                 # limitation for directory hierarchy in path field
-                if obj['path'].count('/') < 3 or obj['path'].count('/') > 15:
-                    continue
+                # if obj['path'].count('/') < 3 or obj['path'].count('/') > 15:
+                #     continue
 
                 # limitation for query's token count in docstring_tokens field
-                if len(obj['docstring_tokens']) < 10:
-                    continue
+                # if len(obj['docstring_tokens']) < 10:
+                #     continue
 
                 # limitation for content of query in docstring field
                 if not obj['docstring'].isascii():
                     continue
-                if "TODO" in obj['docstring'] or \
-                    "NOTE" in obj['docstring'] or \
-                    "/*" in obj['docstring'] or \
-                    "(non-Javadoc)" in obj['docstring'] or \
-                    "https://" in obj['docstring'] or \
-                    "http://" in obj['docstring'] or \
-                    re.search(r'<img[^>]*>', obj['docstring']) or \
-                        re.search(r'<a[^>]*>', obj['docstring']):
+                if "(non-Javadoc)" in obj['docstring']:
                     continue
 
                 # handle content of query in docstring field
                 query = obj['docstring']
-                query = re.sub(r'<[^>]*>', '', query)
+
                 query = re.sub(r'\{@link([^\}]*)\}', r'\1', query)
                 query = re.sub(r'\{@code([^\}]*)\}', r'\1', query)
                 query = re.sub(r'$\{([^\}]*)\}', r'\1', query)
+
+                query = re.sub(r'https?:\/\/[^\s]*', '', query)
+                query = re.sub(r'<[^>]*>', '', query)
+                query = re.sub(r'@.*', '', query)
                 query = re.sub(r'\(e\.g\.[^\)]*\)', '', query)
                 query = re.sub(r'\(i\.e\.[^\)]*\)', '', query)
-                query = re.sub(r'@.*', '', query)
+
+                query = re.sub(r'/\*.*', '', query)
                 query = query.split('.')[0] + '.'
                 query = query.replace('\n', ' ')
                 query = re.sub(r'\s+', ' ', query)
@@ -203,9 +202,6 @@ def filter_data1(raw_dir_path, output_file_path):
                 })
 
                 cur_repo_path_set.add(path)
-
-    print('Filtered data count: {}\nRatio: {}\nRepo count: {}'.format(
-        len(res), len(res) / raw_data_count, len(repo_set)))
 
     with open(output_file_path, 'w') as out_f:
         for obj in res:
@@ -262,6 +258,7 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
             if repo_info['stargazers_count'] < 50:
                 continue
 
+            github_url = f"https://github.com/{data_obj['repo']}/blob/{data_obj['sha']}"
             # cancat zip url
             # https://github.com/soimort/you-get/archive/b746ac01c9f39de94cac2d56f665285b0523b974.zip
             zip_url = f"https://github.com/{data_obj['repo']}/archive/{data_obj['sha']}.zip"
@@ -271,6 +268,7 @@ def filter_repo1(data_file_path, repo_file_path, output_file_path):
                 'sha': data_obj['sha'],
                 'star': repo_info['stargazers_count'],
                 'description': repo_info['description'],
+                'github_url': github_url,
                 'zip_url': zip_url,
             })
 
@@ -314,13 +312,13 @@ def filter_repo2(repo_file_path, repo_root_path, output_file_path):
                 max_sub_dir_and_file_count = parse_obj['maxSubDirAndFileCount']
                 # print(
                 #     f"Repo: {repo_obj['repo']}, Node count: {node_count}")
-                if node_count > 2500:
+                if node_count > 3000:
                     continue
 
                 # if max_sub_dir_count > 6 or max_sub_dir_count < 2:
                 #     continue
 
-                if max_sub_dir_and_file_count > 60:
+                if max_sub_dir_and_file_count > 50:
                     continue
 
                 repo_obj['node_count'] = node_count
@@ -375,13 +373,13 @@ def filter_data2(repo_file_path, data_file_path, output_file_path):
             repo_set.add(repo_obj['repo'])
 
     with open(data_file_path, 'r') as data_f:
-        for line in data_f:
-            data_obj = json.loads(line)
-
+        data_objs = [json.loads(line) for line in data_f]
+        for data_obj in tqdm(data_objs):
             if data_obj['repo'] not in repo_set:
                 continue
 
-            # java-repo-parser ignores the constructor / getter / setter / equals / toString / hashCode
+            # java-repo-parser ignores the dir of test / tests / testing / doc / docs / example / examples / smaple / smaples / demo / demos
+            # and the method of getter / setter / equals / toString / hashCode
             # so we need to filter them out
             parse_out_path = os.path.join(
                 './parse_temp', f"parse_out_{data_obj['repo'].split('/')[-1]}-{data_obj['sha']}.json")
@@ -486,4 +484,4 @@ if __name__ == "__main__":
 
     # filter_data2(repo2_file_path, data1_file_path, data2_file_path)
 
-    # filter_data3(repo_final_file_path, data2_file_path, data3_file_path)
+    filter_data3(repo_final_file_path, data2_file_path, data3_file_path)

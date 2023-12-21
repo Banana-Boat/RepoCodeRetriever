@@ -69,7 +69,7 @@ if __name__ == "__main__":
                 # if repo was already summarized, skip it
                 if os.path.exists(sum_out_path):
                     pipeline_logger.info(
-                        f"Skip {idx + start_idx}th repo: {repo_name}")
+                        f"{idx + start_idx}th repo: {repo_name} has been summarized.")
                     continue
 
                 # create logger

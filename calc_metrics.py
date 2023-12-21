@@ -65,8 +65,8 @@ if __name__ == "__main__":
         data_objs = [json.loads(line) for line in f_data.readlines()]
         result_objs = [json.loads(line) for line in f_ret_result.readlines()]
 
-        accuracy_arr = []
-        precision_arr = []
+        recall_arr = []
+        iou_arr = []
         efficiency_arr = []
 
         for result_obj in result_objs:
@@ -98,7 +98,7 @@ if __name__ == "__main__":
                 # print(f"true path: {true_path_arr}")
                 # print(f"result path: {result_obj['path']}")
 
-                # calculate accuracy & efficiency & precision
+                # calculate recall & efficiency & iou
                 correct_count = 0
                 for i in range(len(true_path_arr)):
                     if i < len(result_obj['path']) and result_obj['path'][i] == true_path_arr[i]:
@@ -106,25 +106,25 @@ if __name__ == "__main__":
                     else:
                         break
                 if not result_obj['is_query_expanded'] and correct_count == len(true_path_arr):
-                    accuracy_arr.append(1)
+                    recall_arr.append(1)
 
                     efficiency_arr.append(
                         result_obj['ret_times'] / len(true_path_arr))
                 else:
-                    accuracy_arr.append(0)
+                    recall_arr.append(0)
                     # print(f"Wrong: {result_obj['id']}")
 
-                    precision_arr.append(
+                    iou_arr.append(
                         correct_count / len(true_path_arr))
 
-        accuracy = round(np.mean(accuracy_arr), 3)
-        precision = round(np.mean(precision_arr), 3)
+        recall = round(np.mean(recall_arr), 3)
+        iou = round(np.mean(iou_arr), 3)
         efficiency = round(np.mean(efficiency_arr), 3)
 
         print(
-            f"\nAccuracy: {accuracy} -- Number of samples: {len(accuracy_arr)}")
+            f"\nRecall: {recall} -- Number of samples: {len(recall_arr)}")
         print(
-            f"Precision: {precision} -- Number of samples: {len(precision_arr)}")
+            f"IoU: {iou} -- Number of samples: {len(iou_arr)}")
         print(
             f"Efficiency: {efficiency} -- Number of samples: {len(efficiency_arr)}")
 

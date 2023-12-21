@@ -8,9 +8,7 @@ import com.github.javaparser.ast.visitor.VoidVisitorAdapter;
 import com.summarizer.pojo.*;
 
 import java.io.File;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.Objects;
+import java.util.*;
 
 public class JavaRepoParser {
     private ParserConfiguration.LanguageLevel languageLevel;
@@ -53,8 +51,12 @@ public class JavaRepoParser {
 
         for (File file : subFiles) {
             if (file.isDirectory()) {
-                // if directory name contains test, skip it
-                if (file.getName().toLowerCase().contains("test"))
+                // if special directory, skip it
+                String dirNameLower = file.getName().toLowerCase();
+                Set<String> specialDirNames = new HashSet<>(Arrays.asList(
+                        "test", "tests", "testing", "doc", "docs", "example", "examples", "sample", "samples", "demo", "demos"
+                ));
+                if (specialDirNames.contains(dirNameLower))
                     continue;
 
                 JDirectory jDirectory = extractDirectory(file, file.getName());
