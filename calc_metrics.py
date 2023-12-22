@@ -105,14 +105,14 @@ if __name__ == "__main__":
                         correct_count += 1
                     else:
                         break
-                if not result_obj['is_query_expanded'] and correct_count == len(true_path_arr):
+                if correct_count == len(true_path_arr):
                     recall_arr.append(1)
 
                     efficiency_arr.append(
                         result_obj['ret_times'] / len(true_path_arr))
                 else:
                     recall_arr.append(0)
-                    # print(f"Wrong: {result_obj['id']}")
+                    print(f"Wrong: {result_obj['id']}")
 
                     iou_arr.append(
                         correct_count / len(true_path_arr))
