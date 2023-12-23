@@ -90,7 +90,7 @@ class SimRetriever:
         self.result_path = []
         self.ret_times = 0
 
-        self._retrieve_in_dir(query, repo_sum_obj)
+        self._retrieve_in_dir(repo_sum_obj)
         self.result_path.reverse()
 
         return False, {

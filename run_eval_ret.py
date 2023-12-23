@@ -40,6 +40,7 @@ if __name__ == "__main__":
     sim_calculator = SimCaculator()
     # create retriever
     retriever = Retriever(openai_client, sim_calculator)
+
     # create sim_retriever(comparative experiment)
     # retriever = SimRetriever(sim_calculator)
 

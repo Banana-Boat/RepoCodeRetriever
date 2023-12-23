@@ -66,6 +66,7 @@ if __name__ == "__main__":
         result_objs = [json.loads(line) for line in f_ret_result.readlines()]
 
         recall_arr = []
+        precision_arr = []
         iou_arr = []
         efficiency_arr = []
 
@@ -107,22 +108,29 @@ if __name__ == "__main__":
                         break
                 if correct_count == len(true_path_arr):
                     recall_arr.append(1)
+                    precision_arr.append(1)
 
                     efficiency_arr.append(
                         result_obj['ret_times'] / len(true_path_arr))
                 else:
+                    if result_obj['is_found']:
+                        precision_arr.append(0)
+
                     recall_arr.append(0)
-                    print(f"Wrong: {result_obj['id']}")
+                    # print(f"Wrong: {result_obj['id']}")
 
                     iou_arr.append(
                         correct_count / len(true_path_arr))
 
         recall = round(np.mean(recall_arr), 3)
+        precision = round(np.mean(precision_arr), 3)
         iou = round(np.mean(iou_arr), 3)
         efficiency = round(np.mean(efficiency_arr), 3)
 
         print(
-            f"\nRecall: {recall} -- Number of samples: {len(recall_arr)}")
+            f"Recall: {recall} -- Number of samples: {len(recall_arr)}")
+        print(
+            f"Precision: {precision} -- Number of samples: {len(precision_arr)}")
         print(
             f"IoU: {iou} -- Number of samples: {len(iou_arr)}")
         print(
