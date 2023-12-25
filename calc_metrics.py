@@ -122,10 +122,10 @@ if __name__ == "__main__":
                     iou_arr.append(
                         correct_count / len(true_path_arr))
 
-        recall = round(np.mean(recall_arr), 3)
-        precision = round(np.mean(precision_arr), 3)
-        iou = round(np.mean(iou_arr), 3)
-        efficiency = round(np.mean(efficiency_arr), 3)
+        recall = round(np.mean(recall_arr) * 100.0, 2)
+        precision = round(np.mean(precision_arr) * 100.0, 2)
+        iou = round(np.mean(iou_arr), 2)
+        efficiency = round(np.mean(efficiency_arr), 2)
 
         print(
             f"Recall: {recall} -- Number of samples: {len(recall_arr)}")

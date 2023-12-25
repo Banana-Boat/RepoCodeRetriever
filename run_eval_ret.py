@@ -41,7 +41,7 @@ if __name__ == "__main__":
     # create retriever
     retriever = Retriever(openai_client, sim_calculator)
 
-    # create sim_retriever(comparative experiment)
+    # create sim_retriever(ablation experiment)
     # retriever = SimRetriever(sim_calculator)
 
     with open(data_file_path, "r") as f_data, open(ret_result_file_path, "a") as f_ret_result:
