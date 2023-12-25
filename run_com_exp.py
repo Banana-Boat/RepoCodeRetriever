@@ -6,6 +6,8 @@
  * By Yue Wang
 '''
 import argparse
+import logging
+import os
 import time
 import datetime
 import json
@@ -16,74 +18,53 @@ from transformers import AutoTokenizer, AutoModel
 from torch.utils.data import DataLoader, Dataset
 
 
-class Example(object):
-    """A single training/test example."""
+class TextDataset(Dataset):
+    def __init__(self, test_data_objs, code_data_objs):
+        self.texts = []
+        self.codes = []
+        text2path = {}  # text idx -> path
+        path2code = {}  # path -> code idx
 
-    def __init__(self,
-                 idx,
-                 text,
-                 code,
-                 url=None
-                 ):
-        self.idx = idx
-        self.text = text
-        self.code = code
-        self.url = url
+        for idx, obj in enumerate(test_data_objs):
+            self.texts.append(obj['query'])
+            text2path[idx] = obj['path']
 
+        for idx, obj in enumerate(code_data_objs):
+            self.codes.append(obj['code'])
+            path2code[obj['path']] = idx
 
-class cosqa_search_eval_text(Dataset):
-    def __init__(self, data_dir, split='valid'):
-        self.examples = read_cosqa_search_examples(
-            f'{data_dir}/{split}')
-        self.codebase = read_cosqa_search_examples(
-            f'{data_dir}/code_idx_map.txt')
+        self.text2code = {}  # text idx -> code idx
 
-        self.text = []
-        self.code = []
-
-        text2url = {}  # examples idx -> retrieval_idx
-        url2code = {}  # retrieval_idx -> codebase idx
-
-        for idx, ex in enumerate(self.examples):
-            self.text.append(ex.text)
-            text2url[idx] = ex.url
-
-        for idx, ex in enumerate(self.codebase):
-            self.code.append(ex.code)
-            url2code[ex.url] = idx
-
-        self.text2code = {}  # examples idx -> codebase idx
-
-        for text_id, _ in enumerate(self.text):
-            self.text2code[text_id] = url2code[text2url[text_id]]
+        # TODO: function with same name
+        for text_id, _ in enumerate(self.texts):
+            self.text2code[text_id] = path2code[text2path[text_id]]
 
     def __len__(self):
-        return len(self.text)
+        return len(self.texts)
 
     def __getitem__(self, index):
-        return self.text[index]
+        return self.texts[index]
 
 
-class cosqa_search_eval_code(Dataset):
-    def __init__(self, data_dir):
-        self.code = [ex.code for ex in read_cosqa_search_examples(
-            f'{data_dir}/code_idx_map.txt')]
+class CodeDataset(Dataset):
+    def __init__(self, code_data_objs):
+        self.codes = [obj['code'] for obj in code_data_objs]
 
     def __len__(self):
-        return len(self.code)
+        return len(self.codes)
 
     def __getitem__(self, index):
-        return self.code[index]
+        return self.codes[index]
 
 
-def create_dataset(data_dir):
-    test_dataset = cosqa_search_eval_text(
-        data_dir, 'cosqa-retrieval-test-500.json')
-    codebase_dataset = cosqa_search_eval_code(data_dir)
+def create_dataset(test_data_objs, code_data_objs):
+    test_dataset = TextDataset(test_data_objs, code_data_objs)
+    codebase_dataset = CodeDataset(code_data_objs)
+
     return test_dataset, codebase_dataset
 
 
-def create_loader(datasets, batch_size, num_worker):
+def create_dataloader(datasets, batch_size, num_worker):
     loaders = []
     for dataset in datasets:
         loader = DataLoader(
@@ -96,45 +77,6 @@ def create_loader(datasets, batch_size, num_worker):
         )
         loaders.append(loader)
     return loaders
-
-
-def replace_special_tokens(line):
-    '''for notice, in case this will cause errors'''
-    return line.replace('<pad>', '</pad>').replace('<s>', '<ss>').replace('</s>', '</ss>')
-
-
-def read_cosqa_search_examples(filename):
-    """Read examples from filename."""
-    examples = []
-    with open(filename, encoding="utf-8") as f:
-        if "code_idx_map" in filename:
-            js = json.load(f)
-            for key in js:
-                examples.append(
-                    Example(
-                        idx=js[key],
-                        text="",
-                        code=key,
-                        url=js[key]
-                    )
-                )
-        else:
-            data = json.load(f)
-            for idx, js in enumerate(data):
-                code = replace_special_tokens(
-                    ' '.join(js['code_tokens'].split()))
-                nl = replace_special_tokens(' '.join(js['doc'].split()))
-                examples.append(
-                    Example(
-                        idx=idx,
-                        text=nl,
-                        code=code,
-                        url=js['retrieval_idx']
-                    )
-                )
-
-    print(f'Read {len(examples)} data from {filename}')
-    return examples
 
 
 @torch.no_grad()
@@ -228,28 +170,99 @@ def match_evaluation(model, text_feats, code_feats, tokenizer, device, top_k, im
     return eval_result
 
 
-def main(args):
-    test_dataset, code_dataset = create_dataset(args.data_dir)
-    test_loader, code_loader = create_loader(
-        [test_dataset, code_dataset], args.batch_size, 4)
+def get_code_data_objs(parse_out_path):
+    def traverse_file(file_obj, path_arr):
+        for method_obj in file_obj['methods']:
+            path_arr.append(method_obj['name'])
+            data_objs.append({
+                'path': "/".join(path_arr),
+                'code': method_obj['signature'] + method_obj['body']
+            })
+            path_arr.pop()
 
+    def traverse_dir(dir_obj, path_arr):
+        for sub_dir_obj in dir_obj['subdirectories']:
+            path_arr.append(sub_dir_obj['name'])
+            traverse_dir(sub_dir_obj, path_arr)
+            path_arr.pop()
+
+        for file_obj in dir_obj['files']:
+            path_arr.append(file_obj['name'])
+            traverse_file(file_obj, path_arr)
+            path_arr.pop()
+
+    data_objs = []
+    with open(parse_out_path, "r") as f_parse_out:
+        parse_obj = json.load(f_parse_out)
+        # does not include repo name
+        traverse_dir(parse_obj['mainDirectory'], [])
+
+    return data_objs
+
+
+def main(args):
+    data_file_path = "./eval_data/filtered/data_final.jsonl"
+    sum_result_root_path = "./eval_data/sum_result"
+
+    logging.basicConfig(level=logging.INFO,
+                        format='%(name)s - %(asctime)s - %(levelname)s - %(message)s',
+                        datefmt='%m/%d/%Y %H:%M:%S')
+    pipeline_logger = logging.getLogger("pipeline")
+
+    # split data for different repo
+    data_dict = {}
+    with open(data_file_path, "r") as f_data:
+        data_objs = [json.loads(line) for line in f_data.readlines()]
+        for data_obj in data_objs:
+            repo_name = data_obj['repo'].split('/')[-1]
+            if repo_name not in data_dict:
+                data_dict[repo_name] = []
+            data_dict[repo_name].append(data_obj)
+
+    # load model
     tokenizer = AutoTokenizer.from_pretrained(
         args.model_name, trust_remote_code=True)
     tokenizer.enc_token_id = tokenizer.convert_tokens_to_ids('[ENC]')
-    model = AutoModel.from_pretrained(args.model_name, trust_remote_code=True)
+    model = AutoModel.from_pretrained(
+        args.model_name, trust_remote_code=True)
 
     device = torch.device(args.device)
     model = model.to(device)
     model.eval()
 
-    text_feats = get_feats(model, tokenizer, test_loader,
-                           args.max_text_len, device, modality='text')
-    code_feats = get_feats(model, tokenizer, code_loader,
-                           args.max_code_len, device, modality='code')
+    # calc recall for each repo
+    for idx, repo_name in enumerate(data_dict):
+        if idx != 3:
+            continue
 
-    test_result = match_evaluation(model, text_feats, code_feats, tokenizer, device, args.top_k,
-                                   test_loader.dataset.text2code)
-    print(f'Test result: ', test_result)
+        test_data_objs = data_dict[repo_name]
+        pipeline_logger.info(f"Start evaluating {idx}th repo: {repo_name}")
+
+        # get code data objs from parse output
+        parse_out_path = os.path.join(
+            sum_result_root_path, repo_name, f"parse_out_{repo_name}.json")
+        if not os.path.exists(parse_out_path):
+            raise Exception("Parse output path does not exist.")
+        code_data_objs = get_code_data_objs(parse_out_path)
+
+        # load data
+        test_dataset, code_dataset = create_dataset(
+            test_data_objs, code_data_objs)
+        test_loader, code_loader = create_dataloader(
+            [test_dataset, code_dataset], args.batch_size, 4)
+
+        # get feats
+        text_feats = get_feats(model, tokenizer, test_loader,
+                               args.max_text_len, device, modality='text')
+        code_feats = get_feats(model, tokenizer, code_loader,
+                               args.max_code_len, device, modality='code')
+
+        # evaluate
+        test_result = match_evaluation(model, text_feats, code_feats, tokenizer, device, args.top_k,
+                                       test_loader.dataset.text2code)
+        print(f'Test result of {repo_name}: {test_result}')
+
+    logging.shutdown()
 
 
 if __name__ == '__main__':
@@ -257,15 +270,10 @@ if __name__ == '__main__':
 
     parser.add_argument(
         '--model_name', default='Salesforce/codet5p-220m-bimodal', type=str)
-    parser.add_argument('--data_dir', default='dataset/cosqa', type=str)
     parser.add_argument('--batch_size', default=256, type=int)
     parser.add_argument('--top_k', default=32, type=int)
-    parser.add_argument('--max_text_len', default=64, type=int)
-    parser.add_argument('--max_code_len', default=360, type=int)
+    parser.add_argument('--max_text_len', default=128, type=int)
+    parser.add_argument('--max_code_len', default=512, type=int)
     parser.add_argument('--device', default='mps', type=str)
 
-    args = parser.parse_args()
-
-    argsdict = vars(args)
-
-    main(args)
+    main(parser.parse_args())
