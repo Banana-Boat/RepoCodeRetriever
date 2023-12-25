@@ -1,10 +1,3 @@
-'''
- * Copyright (c) 2023, salesforce.com, inc.
- * All rights reserved.
- * SPDX-License-Identifier: BSD-3-Clause
- * For full license text, see LICENSE.txt file in the repo root or https://opensource.org/licenses/BSD-3-Clause
- * By Yue Wang
-'''
 import argparse
 import logging
 import os
@@ -80,7 +73,7 @@ def create_dataloader(datasets, batch_size, num_worker):
 
 
 @torch.no_grad()
-def get_feats(model, tokenizer, data_loader, max_length, device, modality='text'):
+def get_match_feats(model, tokenizer, data_loader, max_length, device, modality='text'):
     text_ids = []
     text_embeds = []
     text_atts = []
@@ -170,6 +163,44 @@ def match_evaluation(model, text_feats, code_feats, tokenizer, device, top_k, im
     return eval_result
 
 
+
+@torch.no_grad()
+def get_contrast_feats(model, tokenizer, data_loader, max_length, device):
+    embeds = []
+
+    for text in tqdm(data_loader, total=len(data_loader)):
+        text_input = tokenizer(text, padding='max_length', truncation=True, max_length=max_length,
+                               return_tensors="pt").to(device)
+        embed = model(text_input.input_ids, attention_mask=text_input.attention_mask)
+        embeds.append(embed)
+
+    embeds = torch.cat(embeds, dim=0)
+
+    return embeds
+
+@torch.no_grad()
+def contrast_evaluation(text_embeds, code_embeds, img2txt):
+    score_matrix_i2t = text_embeds @ code_embeds.t()
+    scores_i2t = score_matrix_i2t.cpu().numpy()
+
+    ranks = np.ones(scores_i2t.shape[0]) * -1
+    for index, score in enumerate(scores_i2t):
+        inds = np.argsort(score)[::-1]
+        ranks[index] = np.where(inds == img2txt[index])[0][0]
+
+    # Compute metrics
+    tr1 = 100.0 * len(np.where(ranks < 1)[0]) / len(ranks)
+    tr5 = 100.0 * len(np.where(ranks < 5)[0]) / len(ranks)
+    tr10 = 100.0 * len(np.where(ranks < 10)[0]) / len(ranks)
+    mrr = 100.0 * np.mean(1 / (ranks + 1))
+
+    eval_result = {'r1': tr1,
+                   'r5': tr5,
+                   'r10': tr10,
+                   'mrr': mrr}
+    return eval_result
+
+
 def get_code_data_objs(parse_out_path):
     def traverse_file(file_obj, path_arr):
         for method_obj in file_obj['methods']:
@@ -230,11 +261,9 @@ def main(args):
     model = model.to(device)
     model.eval()
 
-    # calc recall for each repo
+    # calc recall
+    r1s = []
     for idx, repo_name in enumerate(data_dict):
-        if idx != 3:
-            continue
-
         test_data_objs = data_dict[repo_name]
         pipeline_logger.info(f"Start evaluating {idx}th repo: {repo_name}")
 
@@ -251,17 +280,21 @@ def main(args):
         test_loader, code_loader = create_dataloader(
             [test_dataset, code_dataset], args.batch_size, 4)
 
-        # get feats
-        text_feats = get_feats(model, tokenizer, test_loader,
-                               args.max_text_len, device, modality='text')
-        code_feats = get_feats(model, tokenizer, code_loader,
-                               args.max_code_len, device, modality='code')
-
         # evaluate
-        test_result = match_evaluation(model, text_feats, code_feats, tokenizer, device, args.top_k,
-                                       test_loader.dataset.text2code)
+        # text_feats = get_match_feats(model, tokenizer, test_loader,
+        #                        args.max_text_len, device, modality='text')
+        # code_feats = get_match_feats(model, tokenizer, code_loader,
+        #                        args.max_code_len, device, modality='code')
+        # test_result = match_evaluation(model, text_feats, code_feats, tokenizer, device, args.top_k,
+        #                                test_loader.dataset.text2code)
+        
+        text_embeds = get_contrast_feats(model, tokenizer, test_loader, args.max_text_len, device)
+        code_embeds = get_contrast_feats(model, tokenizer, code_loader, args.max_code_len, device)
+        test_result = contrast_evaluation(text_embeds, code_embeds, test_loader.dataset.text2code)
         print(f'Test result of {repo_name}: {test_result}')
+        r1s.append(test_result['r1'])
 
+    print(f"Recall: {round(np.mean(r1s), 2)}")
     logging.shutdown()
 
 
@@ -274,6 +307,6 @@ if __name__ == '__main__':
     parser.add_argument('--top_k', default=32, type=int)
     parser.add_argument('--max_text_len', default=128, type=int)
     parser.add_argument('--max_code_len', default=512, type=int)
-    parser.add_argument('--device', default='mps', type=str)
+    parser.add_argument('--device', default='cuda', type=str)
 
     main(parser.parse_args())
