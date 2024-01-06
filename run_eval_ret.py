@@ -4,7 +4,6 @@ import os
 import sys
 from dotenv import load_dotenv
 from tqdm import tqdm
-from code_sim_calculator import CodeSimCalculator
 
 from openai_client import OpenAIClient
 from retriever import Retriever
@@ -39,10 +38,9 @@ if __name__ == "__main__":
 
     # create similarity caculator
     text_sim_calculator = TextSimCalculator()
-    code_sim_calculator = CodeSimCalculator()
     # create retriever
     retriever = Retriever(
-        openai_client, text_sim_calculator, code_sim_calculator)
+        openai_client, text_sim_calculator)
 
     # create sim_retriever(ablation experiment)
     # retriever = SimRetriever(text_sim_calculator)
