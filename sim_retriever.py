@@ -1,11 +1,11 @@
 import logging
 from typing import Tuple
-from sim_caculator import SimCaculator
+from text_sim_calculator import TextSimCalculator
 
 
 class SimRetriever:
-    def __init__(self, sim_caculator: SimCaculator):
-        self.sim_caculator = sim_caculator
+    def __init__(self, text_sim_calculator: TextSimCalculator):
+        self.text_sim_calculator = text_sim_calculator
 
     def _retrieve_in_file(self, file_sum_obj: dict):
         '''Retrieve the method according to its description and the summary of the class.'''
@@ -20,7 +20,7 @@ class SimRetriever:
 
         # calculate similarity, and sort infos according to similarity
         summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(
+        similarities = self.text_sim_calculator.calc_similarities(
             self.query, summaries)
 
         for i, info in enumerate(infos):
@@ -51,7 +51,7 @@ class SimRetriever:
 
         # calculate similarity, and sort infos according to similarity
         summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(
+        similarities = self.text_sim_calculator.calc_similarities(
             self.query, summaries)
 
         for i, info in enumerate(infos):

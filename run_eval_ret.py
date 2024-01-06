@@ -7,7 +7,7 @@ from tqdm import tqdm
 
 from openai_client import OpenAIClient
 from retriever import Retriever
-from sim_caculator import SimCaculator
+from text_sim_calculator import TextSimCalculator
 from sim_retriever import SimRetriever
 
 
@@ -37,7 +37,7 @@ if __name__ == "__main__":
         exit(1)
 
     # create similarity caculator
-    sim_calculator = SimCaculator()
+    sim_calculator = TextSimCalculator()
     # create retriever
     retriever = Retriever(openai_client, sim_calculator)
 

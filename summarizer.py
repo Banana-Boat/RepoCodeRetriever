@@ -195,6 +195,7 @@ class Summarizer:
                     'name': method_obj['name'],
                     'summary': summary,
                     'signature': method_obj['signature'],
+                    'body': method_obj['body'],
                 })
                 self.logger.info(
                     f"METHOD{LOG_SEPARATOR}\nNode ID: {method_obj['id']}\nInput:\n{output_dict['input_text']}\nOutput:\n{summary}")
@@ -204,6 +205,7 @@ class Summarizer:
                     'name': method_obj['name'],
                     'summary': NO_SUMMARY,
                     'signature': method_obj['signature'],
+                    'body': method_obj['body'],
                 })
                 self.logger.info(
                     f"METHOD{LOG_SEPARATOR}\nNode ID: {method_obj['id']}\nOutput:\n{NO_SUMMARY}")

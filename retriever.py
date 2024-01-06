@@ -8,7 +8,7 @@ import tiktoken
 from constants import EXP_MAX_REF_COUNT, EXP_QUERY, INPUT_SEPARATOR, LOG_SEPARATOR, RET_DIR_SYSTEM_PROMPT, RET_DIR_MAX_INFO_LENGTH, RET_FILE_MAX_INFO_LENGTH, RET_MAX_OUTPUT_LENGTH, RET_FILE_SYSTEM_PROMPT, RET_MAX_BACKTRACK_COUNT
 
 from openai_client import OpenAIClient
-from sim_caculator import SimCaculator
+from text_sim_calculator import TextSimCalculator
 
 
 class InferType(Enum):
@@ -17,13 +17,13 @@ class InferType(Enum):
 
 
 class Retriever:
-    def __init__(self, openai_client: OpenAIClient, sim_caculator: SimCaculator):
+    def __init__(self, openai_client: OpenAIClient, text_sim_calculator: TextSimCalculator):
         self.openai_tokenizer = tiktoken.encoding_for_model(
             openai_client.model_name)
         self.openai_client = openai_client
         self.token_used_count = 0
 
-        self.sim_caculator = sim_caculator
+        self.text_sim_calculator = text_sim_calculator
 
     def _reset(self):
         '''Reset variables.'''
@@ -115,7 +115,7 @@ class Retriever:
 
         # calculate similarity
         summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(
+        similarities = self.text_sim_calculator.calc_similarities(
             self.query, summaries)
 
         for i, info in enumerate(infos):
@@ -193,7 +193,7 @@ class Retriever:
 
         # calculate similarity
         summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(
+        similarities = self.text_sim_calculator.calc_similarities(
             self.query, summaries)
 
         for i, info in enumerate(infos):
@@ -288,7 +288,7 @@ class Retriever:
 
         # calculate similarity, and sort infos according to similarity
         summaries = [info['summary'] for info in infos]
-        similarities = self.sim_caculator.calc_similarities(
+        similarities = self.text_sim_calculator.calc_similarities(
             self.query, summaries)
 
         for i, info in enumerate(infos):
