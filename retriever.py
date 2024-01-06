@@ -93,7 +93,7 @@ class Retriever:
 
     def _retrieve_in_file(self, file_sum_obj: dict) -> Tuple[bool, bool]:
         '''
-            Retrieve the method according to its description and the summary of the file.
+            Retrieve the method according to its description and the information of the file.
             return: (is_error: bool, is_found: bool)
         '''
         user_input_text = f"Method Description: {self.query}\n{INPUT_SEPARATOR}\nInformation List:\n"
@@ -165,7 +165,7 @@ class Retriever:
 
     def _retrieve_in_dir(self, dir_sum_obj: dict) -> Tuple[bool, bool]:
         '''
-            Retrieve the method according to its description and the summary of the directory.
+            Retrieve the method according to its description and the information of the directory.
             return: (is_error: bool, is_found: bool)
         '''
         user_input_text = f"Method Description: {self.query}\n{INPUT_SEPARATOR}\nInformation List:\n"
@@ -372,7 +372,7 @@ class Retriever:
 
     def retrieve(self, query: str, repo_sum_obj: dict, logger: logging.Logger) -> Tuple[bool, dict]:
         '''
-            Retrieve the method according to its description and the summary of the entire repo.
+            Retrieve the method according to its description and the information of the entire repo.
             return: (is_error: bool, {is_found: bool, is_query_expanded: bool, path: List[str], ret_times: int}).
             If is_found is False, path is the search path of the most probability.
         '''

@@ -1,46 +1,73 @@
 from typing import List
 import torch
-from sentence_transformers import SentenceTransformer, util
+from transformers import AutoTokenizer, AutoModel
 
 
 class CodeSimCalculator:
-    '''Calculate similarities between a query and a list of code snippets'''
+    '''Calculate similarities between a query(text) and a list of code snippets'''
 
     def __init__(self):
         self.device = torch.device(
             'mps' if torch.backends.mps.is_available() else 'cpu')
-        self.model = SentenceTransformer(
-            'sentence-transformers/all-MiniLM-L6-v2', device=self.device)
 
-    def calc_similarities(self, query: str, sentences: List[str]) -> List[float]:
-        if len(sentences) == 0:
+        model_name = 'Salesforce/codet5p-220m-bimodal'
+        self.tokenizer = AutoTokenizer.from_pretrained(
+            model_name, trust_remote_code=True)
+        self.tokenizer.enc_token_id = self.tokenizer.convert_tokens_to_ids(
+            '[ENC]')
+        self.model = AutoModel.from_pretrained(
+            model_name, trust_remote_code=True)
+
+        self.model = self.model.to(self.device)
+        self.model.eval()
+
+    def get_embeds(self, texts: List[str], max_length: int):
+        embeds = []
+
+        for text in texts:
+            encoded = self.tokenizer(text, padding='max_length', truncation=True, max_length=max_length,
+                                     return_tensors="pt").to(self.device)
+            output = self.model.encoder(encoded.input_ids, attention_mask=encoded.attention_mask,
+                                        return_dict=True)
+            embed = torch.nn.functional.normalize(
+                self.model.proj(output.last_hidden_state[:, 0, :]), dim=-1)
+            embeds.append(embed)
+
+        embeds = torch.cat(embeds, dim=0)
+
+        return embeds
+
+    def calc_similarities(self, query: str, codes: List[str]) -> List[float]:
+        if len(codes) == 0:
             return []
 
-        query_embedding = self.model.encode(
-            [query], convert_to_tensor=True, device=self.device, show_progress_bar=False)
-        sentences_embeddings = self.model.encode(
-            sentences, convert_to_tensor=True, device=self.device, show_progress_bar=False)
+        query_embeds = self.get_embeds([query], 128)
+        code_embeds = self.get_embeds(codes, 512)
 
-        similarities = util.pytorch_cos_sim(
-            query_embedding, sentences_embeddings)[0]
+        with torch.no_grad():
+            sims_matrix = query_embeds @ code_embeds.t()
+            similarities = sims_matrix.tolist()[0]
+            print(similarities)
 
-        return [round(sim.item(), 3) for sim in similarities]
+        return [round(sim, 3) for sim in similarities]
 
 
 if __name__ == "__main__":
     code_sim_calculator = CodeSimCalculator()
-    query = "Acquire on object instance of type T, either by reusing a previously recycled instance if possible, or if there are no currently-unused instances, by allocating a new instance."
+    query = "Parse a list of type parameters into TypeParameter objects."
     infos = [
-        {'id': 515, 'name': 'ArrayTypeSignature.java', 'summary': 'The `ArrayTypeSignature` class extends `ReferenceTypeSignature` and provides methods to work with array type signatures. It includes methods to get the number of dimensions of the array, set the scan result, find referenced class names, compare with other type signatures, and parse array type signatures from a string. The class also includes a method to return a string representation of the array type.'},
-        {'id': 150, 'name': 'TypeVariableSignature.java', 'summary': 'The `TypeVariableSignature` class extends `ClassRefOrTypeVariableSignature` and provides methods for resolving type parameters, parsing type variable signatures, getting class names, finding referenced class names, comparing type signatures, and generating string representations. The `resolve()` method resolves the type variable against the containing method or class, while the `parse()` method parses a type variable signature. The class also includes methods for finding referenced class names, comparing type signatures, and generating string representations.'},
-        {'id': 22, 'name': 'ClassTypeSignature.java', 'summary': 'The `ClassTypeSignature` class extends `HierarchicalTypeSignature` and includes a `parse` method to parse a type descriptor into a `ClassTypeSignature` object. It also has methods to get the class name, set the scan result, and find referenced class names. The `parse` method uses a `Parser` object to extract information from the type descriptor, and the `findReferencedClassNames` method adds referenced class names to a set by iterating over type parameters and superinterface signatures.'},
-        {'id': 347, 'name': 'TypeArgument.java', 'summary': 'The `TypeArgument` class extends `HierarchicalTypeSignature` and provides methods for parsing type arguments, getting class names, setting scan results, finding referenced class names, and generating string representations of the type signature. It includes methods such as `parse` for parsing type arguments, `getClassName` for retrieving the class name, and `toStringWithSimpleNames` for generating a string representation using simple names. Some methods throw `IllegalArgumentException` if called inappropriately.'},
-        {'id': 353, 'name': 'TypeParameter.java', 'summary': 'The `TypeParameter` class extends `HierarchicalTypeSignature` and includes methods to parse a list of type parameters, get the class name, retrieve class information, set scan results, and find referenced class names. It also includes a method to find referenced class names by calling the same method on the `classBound` field if it is not null. The `getClassName()` method is not implemented in this class.'},
-        {'id': 298, 'name': 'ClassGraph.java', 'summary': 'The `ClassGraph` Java class provides methods for scanning and retrieving information about classes, fields, methods, annotations, and modules. It allows for customization of the scanning process, including enabling or disabling specific scanning features, whitelisting or blacklisting packages, classes, jars, and modules, and retrieving classpath information. The class also supports asynchronous scanning and real-time logging.'}
+        {'id': 348, 'name': 'parseList', 'code': 'List<TypeParameter> parseList(final Parser parser, final String definingClassName){ if (parser.peek() != \'<\') { return Collections.emptyList(); } parser.expect(\'<\'); final List<TypeParameter> typeParams = new ArrayList<>(1); while (parser.peek() != \'>\') { if (!parser.hasMore()) { throw new ParseException(parser, "Missing \'>\'"); } if (!TypeUtils.getIdentifierToken(parser)) { throw new ParseException(parser, "Could not parse identifier token"); } final String identifier = parser.currToken(); // classBound may be null final ReferenceTypeSignature classBound = ReferenceTypeSignature.parseClassBound(parser, definingClassName); List<ReferenceTypeSignature> interfaceBounds; if (parser.peek() == \':\') { interfaceBounds = new ArrayList<>(); while (parser.peek() == \':\') { parser.expect(\':\'); final ReferenceTypeSignature interfaceTypeSignature = ReferenceTypeSignature.parseReferenceTypeSignature(parser, definingClassName); if (interfaceTypeSignature == null) { throw new ParseException(parser, "Missing interface type signature"); } interfaceBounds.add(interfaceTypeSignature); } } else { interfaceBounds = Collections.emptyList(); } typeParams.add(new TypeParameter(identifier, classBound, interfaceBounds)); } parser.expect(\'>\'); return typeParams; }'},
+        {'id': 352, 'name': 'findReferencedClassNames',
+            'code': 'void findReferencedClassNames(final Set<String> classNameListOut){ if (classBound != null) { classBound.findReferencedClassNames(classNameListOut); } for (final ReferenceTypeSignature typeSignature : interfaceBounds) { typeSignature.findReferencedClassNames(classNameListOut); } }'},
+        {'id': 351, 'name': 'setScanResult',
+            'code': 'void setScanResult(final ScanResult scanResult){ super.setScanResult(scanResult); if (this.classBound != null) { this.classBound.setScanResult(scanResult); } if (interfaceBounds != null) { for (final ReferenceTypeSignature referenceTypeSignature : interfaceBounds) { referenceTypeSignature.setScanResult(scanResult); } } }'},
+        {'id': 350, 'name': 'getClassInfo',
+            'code': 'ClassInfo getClassInfo(){ throw new IllegalArgumentException("getClassInfo() cannot be called here"); }'},
+        {'id': 349, 'name': 'getClassName', 'code': 'String getClassName(){ // getClassInfo() is not valid for this type, so getClassName() does not need to be implemented throw new IllegalArgumentException("getClassName() cannot be called here"); }'},
     ]
 
-    summaries = [info['summary'] for info in infos]
-    similarities = code_sim_calculator.calc_similarities(query, summaries)
+    codes = [info['code'] for info in infos]
+    similarities = code_sim_calculator.calc_similarities(query, codes)
 
     for i, info in enumerate(infos):
         info['similarity'] = similarities[i]

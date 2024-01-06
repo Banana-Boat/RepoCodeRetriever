@@ -4,6 +4,7 @@ import os
 import sys
 from dotenv import load_dotenv
 from tqdm import tqdm
+from code_sim_calculator import CodeSimCalculator
 
 from openai_client import OpenAIClient
 from retriever import Retriever
@@ -37,12 +38,14 @@ if __name__ == "__main__":
         exit(1)
 
     # create similarity caculator
-    sim_calculator = TextSimCalculator()
+    text_sim_calculator = TextSimCalculator()
+    code_sim_calculator = CodeSimCalculator()
     # create retriever
-    retriever = Retriever(openai_client, sim_calculator)
+    retriever = Retriever(
+        openai_client, text_sim_calculator, code_sim_calculator)
 
     # create sim_retriever(ablation experiment)
-    # retriever = SimRetriever(sim_calculator)
+    # retriever = SimRetriever(text_sim_calculator)
 
     with open(data_file_path, "r") as f_data, open(ret_result_file_path, "a") as f_ret_result:
         data_objs = [json.loads(line) for line in f_data.readlines()]

@@ -4,6 +4,8 @@ from sentence_transformers import SentenceTransformer, util
 
 
 class TextSimCalculator:
+    '''Calculate similarities between a query(text) and a list of summaries(text)'''
+
     def __init__(self):
         self.device = torch.device(
             'mps' if torch.backends.mps.is_available() else 'cpu')

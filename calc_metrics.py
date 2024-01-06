@@ -60,15 +60,18 @@ if __name__ == "__main__":
     data_file_path = "./eval_data/filtered/data_final.jsonl"
     ret_result_file_path = "./eval_data/ret_result.jsonl"
     sum_result_root_path = "./eval_data/sum_result"
-
     with open(data_file_path, "r") as f_data, open(ret_result_file_path, "r") as f_ret_result:
         data_objs = [json.loads(line) for line in f_data.readlines()]
         result_objs = [json.loads(line) for line in f_ret_result.readlines()]
 
-        recall_arr = []
-        precision_arr = []
-        iou_arr = []
-        efficiency_arr = []
+        # Initialize a dictionary to store the statistics for each repo_name
+        repo_stats = {}
+
+        # Initialize global statistics arrays
+        global_recall_arr = []
+        global_precision_arr = []
+        global_iou_arr = []
+        global_efficiency_arr = []
 
         for result_obj in result_objs:
             # get corresponding data object
@@ -96,8 +99,14 @@ if __name__ == "__main__":
                         f"Can't get true path array for id {result_obj['id']}")
                     continue
 
-                # print(f"true path: {true_path_arr}")
-                # print(f"result path: {result_obj['path']}")
+                # Initialize the statistics for the repo_name if not already done
+                if repo_name not in repo_stats:
+                    repo_stats[repo_name] = {
+                        'recall_arr': [],
+                        'precision_arr': [],
+                        'iou_arr': [],
+                        'efficiency_arr': []
+                    }
 
                 # calculate recall & efficiency & iou
                 correct_count = 0
@@ -107,33 +116,55 @@ if __name__ == "__main__":
                     else:
                         break
                 if correct_count == len(true_path_arr):
-                    recall_arr.append(1)
-                    precision_arr.append(1)
+                    repo_stats[repo_name]['recall_arr'].append(1)
+                    repo_stats[repo_name]['precision_arr'].append(1)
+                    repo_stats[repo_name]['efficiency_arr'].append(
+                        result_obj['ret_times'] / len(true_path_arr))
 
-                    efficiency_arr.append(
+                    # Update global statistics arrays
+                    global_recall_arr.append(1)
+                    global_precision_arr.append(1)
+                    global_efficiency_arr.append(
                         result_obj['ret_times'] / len(true_path_arr))
                 else:
                     if result_obj['is_found']:
-                        precision_arr.append(0)
+                        repo_stats[repo_name]['precision_arr'].append(0)
+                        # Update global statistics arrays
+                        global_precision_arr.append(0)
 
-                    recall_arr.append(0)
-                    # print(f"Wrong: {result_obj['id']}")
+                    repo_stats[repo_name]['recall_arr'].append(0)
+                    # Update global statistics arrays
+                    global_recall_arr.append(0)
 
-                    iou_arr.append(
+                    repo_stats[repo_name]['iou_arr'].append(
                         correct_count / len(true_path_arr))
+                    # Update global statistics arrays
+                    global_iou_arr.append(correct_count / len(true_path_arr))
 
-        recall = round(np.mean(recall_arr) * 100.0, 2)
-        precision = round(np.mean(precision_arr) * 100.0, 2)
-        iou = round(np.mean(iou_arr), 2)
-        efficiency = round(np.mean(efficiency_arr), 2)
+        # Print the statistics for each repo_name
+        for repo_name, stats in repo_stats.items():
+            recall = round(np.mean(stats['recall_arr']) * 100.0, 2)
+            precision = round(np.mean(stats['precision_arr']) * 100.0, 2)
+            iou = round(np.mean(stats['iou_arr']), 2)
+            efficiency = round(np.mean(stats['efficiency_arr']), 2)
 
-        print(
-            f"Recall: {recall} -- Number of samples: {len(recall_arr)}")
-        print(
-            f"Precision: {precision} -- Number of samples: {len(precision_arr)}")
-        print(
-            f"IoU: {iou} -- Number of samples: {len(iou_arr)}")
-        print(
-            f"Efficiency: {efficiency} -- Number of samples: {len(efficiency_arr)}")
+            print(f"Repo: {repo_name}")
+            print(f"Recall: {recall}")
+            print(f"Precision: {precision}")
+            print(f"IoU: {iou}")
+            print(f"Efficiency: {efficiency}")
+            print('-' * 20)
+
+        # Print the global statistics
+        global_recall = round(np.mean(global_recall_arr) * 100.0, 2)
+        global_precision = round(np.mean(global_precision_arr) * 100.0, 2)
+        global_iou = round(np.mean(global_iou_arr), 2)
+        global_efficiency = round(np.mean(global_efficiency_arr), 2)
+
+        print("Global Statistics:")
+        print(f"Recall: {global_recall}")
+        print(f"Precision: {global_precision}")
+        print(f"IoU: {global_iou}")
+        print(f"Efficiency: {global_efficiency}")
 
     logging.shutdown()
